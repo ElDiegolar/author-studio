@@ -59,7 +59,9 @@ async function refreshState() { state.value = await api(`/characters/${roomId.va
 async function send() { const m = msg.value; msg.value = ''; history.value.push({ role: 'user', content: m }); const r = await run('thinking', () => api<{ answer: string; findings: Finding[] }>(`/characters/${roomId.value}/chat`, 'POST', { message: m, asOf: asOf.value ?? undefined, history: history.value.slice(0, -1).map(({ role, content }) => ({ role, content })) })); if (r) history.value.push({ role: 'assistant', content: r.answer, findings: r.findings }); }
 const souls = ref<string[]>([]);
 const situation = ref(''); const decision = ref<{ decision: string; reasoning: string; rejected: string[]; emotion: string; cost: string } | null>(null);
-async function decideIt() { decision.value = (await run('deciding', () => api<typeof decision.value>(`/characters/${roomId.value}/decide`, 'POST', { situation: situation.value, asOf: asOf.value ?? undefined }))) ?? null; await refreshState(); }
+const decisionSaved = ref(false);
+async function decideIt() { decisionSaved.value = false; decision.value = (await run('deciding', () => api<typeof decision.value>(`/characters/${roomId.value}/decide`, 'POST', { situation: situation.value, asOf: asOf.value ?? undefined }))) ?? null; }
+async function keepDecision() { if (!decision.value) return; await run('saving to soul', () => api(`/characters/${roomId.value}/decisions`, 'POST', { situation: situation.value, decision: decision.value, asOf: asOf.value ?? 0 })); decisionSaved.value = true; await refreshState(); }
 async function soul(action: string, name?: string) { await run(action, () => api(`/characters/${roomId.value}/souls`, 'POST', { action, name })); souls.value = await api(`/characters/${roomId.value}/souls`); await refreshState(); }
 
 // ---- muse ----
@@ -184,7 +186,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
         <h3 style="margin-top:12px">Mind</h3>
         <div class="row"><button class="ghost" :disabled="!!busy" @click="run('building mirror', () => api(`/characters/${roomId}/mirror`, 'POST')).then(refreshState)">Build psychological mirror</button></div>
         <div class="row"><input v-model="situation" placeholder="a situation for them to decide on" style="width:70%" /><button class="ghost" :disabled="!situation || !!busy" @click="decideIt">Let them decide</button></div>
-        <div v-if="decision" class="idea"><b>{{ decision.decision }}</b><br /><span class="muted">{{ decision.reasoning }}</span><br /><span class="muted">rejected: {{ decision.rejected.join('; ') }} · feeling {{ decision.emotion }} · cost: {{ decision.cost }}</span></div>
+        <div v-if="decision" class="idea"><b>{{ decision.decision }}</b><br /><span class="muted">{{ decision.reasoning }}</span><br /><span class="muted">rejected: {{ decision.rejected.join('; ') }} · feeling {{ decision.emotion }} · cost: {{ decision.cost }}</span><br /><span v-if="decisionSaved" class="ok">saved to soul</span><button v-else class="ghost" @click="keepDecision">Keep this decision</button> <span class="muted" v-if="!decisionSaved">(scratch until kept)</span></div>
         <h3 style="margin-top:12px">Soul</h3>
         <div class="row"><button class="ghost" @click="soul('save', prompt('Snapshot name?', 'snapshot') ?? undefined)">Save</button><button class="ghost" @click="soul('reset')">Reset to base</button><button class="ghost" @click="api(`/characters/${roomId}/souls`).then((s) => souls = s as string[])">List</button></div>
         <ul class="list"><li v-for="s in souls" :key="s" @click="soul('restore', s)">restore <b>{{ s }}</b></li></ul>
@@ -206,7 +208,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
     <div class="row"><label>As of scene</label><input type="number" v-model.number="museAsOf" style="width:90px" :max="maxOrder" :min="0" /></div>
     <div class="row"><span class="muted">Who decides for themselves (the rest follow you):</span><label v-for="c in bible.characters" :key="c.id" style="margin:0"><input type="checkbox" :value="c.id" v-model="museAgency" style="width:auto" /> {{ c.name }}</label></div>
     <div class="row"><button class="act" :disabled="!!busy" @click="museIt">Throw me ideas</button></div>
-    <div v-if="museDecisions.length" class="card"><h3>What they would do</h3><div v-for="(d, k) in museDecisions" :key="k" class="idea"><b>{{ d.name }}</b>: {{ d.decision }} <span class="muted">({{ d.emotion }})</span><br /><span class="muted">{{ d.reasoning }}</span></div></div>
+    <div v-if="museDecisions.length" class="card"><h3>What they would do</h3><p class="muted">Scratch: nothing here is saved to anyone's soul.</p><div v-for="(d, k) in museDecisions" :key="k" class="idea"><b>{{ d.name }}</b>: {{ d.decision }} <span class="muted">({{ d.emotion }})</span><br /><span class="muted">{{ d.reasoning }}</span></div></div>
     <div v-for="(i, k) in ideas" :key="k" class="idea"><b>{{ i.kind }}</b> — {{ i.idea }}<br /><span class="muted">grows from: {{ i.growsFrom }} · {{ i.characters.map(byId).join(', ') }}</span></div>
   </div>
 

@@ -9,7 +9,7 @@
  *   author character seed <dir> "like Rick Deckard" [--notes ..] [--add]
  *   author character relate <dir> <id> <otherId> "relation" ["mutual relation"]
  *   author character mirror <dir> <id>                   build the psychological mirror (psyche.* on the soul)
- *   author character decide <dir> <id> "situation" [--as-of N]   the character decides; appended to the soul
+ *   author character decide <dir> <id> "situation" [--as-of N] [--save]   the character decides; scratch unless --save
  *   author world add <dir> --kind location|faction|rule|item|glossary --name .. --summary .. [--details ..] [--at N]
  *   author scene add <dir> --title .. --chapter N --pov <charId> --cast id,id --goal .. --conflict .. --outcome .. [--location --time --words N]
  *   author outline <dir> --chapters N [--per 3]
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
         rl.close(); return;
       }
       if (sub === 'mirror') { print(await studio.mirror(args[0]!)); return; }
-      if (sub === 'decide') { const { v, pos } = opts(args, { 'as-of': { type: 'string' } }); print(await studio.decide(pos[0]!, pos[1]!, num(v['as-of']))); return; }
+      if (sub === 'decide') { const { v, pos } = opts(args, { 'as-of': { type: 'string' }, save: { type: 'boolean' } }); print(await studio.decide(pos[0]!, pos[1]!, num(v['as-of']), { save: Boolean(v.save) })); return; }
       if (sub === 'relate') { await studio.relate(args[0]!, args[1]!, args[2]!, args[3]); print('related'); return; }
       if (sub === 'seed') {
         const { v, pos } = opts(args, { notes: { type: 'string' }, add: { type: 'boolean' } });

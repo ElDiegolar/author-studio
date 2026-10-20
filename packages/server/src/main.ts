@@ -45,7 +45,8 @@ app.put('/api/scenes/:id', async (c) => { await studio.store.updateScene(await c
 app.get('/api/scenes/:id/versions', async (c) => c.json(await studio.store.versions(c.req.param('id'))));
 app.post('/api/scenes/:id/draft', async (c) => { const body = await c.req.json().catch(() => ({})); return c.json(await studio.draft(c.req.param('id'), { agency: body.agency })); });
 app.post('/api/characters/:id/mirror', async (c) => c.json(await studio.mirror(c.req.param('id'))));
-app.post('/api/characters/:id/decide', async (c) => { const { situation, asOf } = await c.req.json(); return c.json(await studio.decide(c.req.param('id'), situation, asOf)); });
+app.post('/api/characters/:id/decide', async (c) => { const { situation, asOf, save } = await c.req.json(); return c.json(await studio.decide(c.req.param('id'), situation, asOf, { save: save === true })); });
+app.post('/api/characters/:id/decisions', async (c) => { const { situation, decision, asOf } = await c.req.json(); await studio.recordDecision(c.req.param('id'), situation, decision, asOf ?? 0); return c.json({ ok: true }); });
 app.post('/api/scenes/:id/text', async (c) => { const { text } = await c.req.json(); return c.json(await studio.saveAuthorText(c.req.param('id'), text)); });
 app.post('/api/scenes/:id/accept', async (c) => c.json(await studio.accept(c.req.param('id'))));
 app.post('/api/scenes/:id/proof', async (c) => c.json(await studio.proofread(c.req.param('id'))));

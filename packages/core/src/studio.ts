@@ -84,7 +84,7 @@ export class Studio {
       decisions = [];
       for (const id of agents) {
         const c = bible.characters.find((x) => x.id === id); if (!c) continue;
-        const d = await this.decide(id, `Scene ${scene.order}, ${scene.title}. ${scene.location ? `At ${scene.location}, ${scene.time}. ` : ''}Goal of the scene: ${scene.goal}. Conflict: ${scene.conflict}. What do you do?`, scene.order);
+        const d = await this.decide(id, `Scene ${scene.order}, ${scene.title}. ${scene.location ? `At ${scene.location}, ${scene.time}. ` : ''}Goal of the scene: ${scene.goal}. Conflict: ${scene.conflict}. What do you do?`, scene.order, { save: false });
         decisions.push({ name: c.name, decision: d.decision, emotion: d.emotion });
       }
     }
@@ -176,15 +176,24 @@ export class Studio {
   }
   async psyche(characterId: string): Promise<Record<string, string>> { return psycheOf(await this.state(characterId)); }
 
-  /** The character decides for themselves. The decision is appended to the soul at `order`. */
-  async decide(characterId: string, situation: string, order?: number): Promise<roles.Decision & { order: number }> {
+  /**
+   * The character decides for themselves. Scratch by default: nothing is written to the soul
+   * unless `save` is true. Use recordDecision to keep a decision you already have.
+   */
+  async decide(characterId: string, situation: string, order?: number, opts: { save?: boolean } = {}): Promise<roles.Decision & { order: number; saved: boolean }> {
     const bible = await this.bible();
     const c = Studio.characterOf(bible, characterId);
     const st = await this.state(characterId, order);
     const d = await roles.decide(providerFor('actor', this.ai), c, st, situation, this.knownPeople(bible, c, st));
     const at = order ?? st.asOf;
-    await this.store.appendEvent({ type: 'decision', characterId, order: at, situation, decision: d.decision, reasoning: d.reasoning, rejected: d.rejected, emotion: d.emotion, cost: d.cost });
-    return { ...d, order: at };
+    if (opts.save) await this.recordDecision(characterId, situation, d, at);
+    return { ...d, order: at, saved: Boolean(opts.save) };
+  }
+
+  /** Write a decision to the character's soul. Only called when the author asks to keep it. */
+  async recordDecision(characterId: string, situation: string, d: roles.Decision, order = 0): Promise<void> {
+    Studio.characterOf(await this.bible(), characterId);
+    await this.store.appendEvent({ type: 'decision', characterId, order, situation, decision: d.decision, reasoning: d.reasoning, rejected: d.rejected, emotion: d.emotion, cost: d.cost });
   }
 
   async relate(characterId: string, otherId: string, relation: string, mutual?: string): Promise<void> {
