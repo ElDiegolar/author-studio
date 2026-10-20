@@ -15,14 +15,17 @@ if (!dir) { console.error('AUTHOR_PROJECT is required'); process.exit(1); }
 const studio = await Studio.open(dir);
 const app = new Hono();
 
-app.onError((e, c) => c.json({ error: e.message }, 500));
+app.onError((e, c) => { console.error(`[${new Date().toISOString()}] ${c.req.method} ${c.req.path}: ${e.message}`); return c.json({ error: e.message }, 500); });
 
+app.post('/api/agent', async (c) => { const { history, message } = await c.req.json(); return c.json(await studio.agent(history ?? [], message)); });
 app.get('/api/bible', async (c) => c.json(await studio.bible()));
 app.put('/api/premise', async (c) => { await studio.store.savePremise(await c.req.json()); return c.json({ ok: true }); });
 app.put('/api/project', async (c) => { await studio.store.saveProject(await c.req.json()); return c.json({ ok: true }); });
 
 app.post('/api/characters', async (c) => { const ch = await studio.store.addCharacter(await c.req.json()); await studio.store.saveSoul(ch.id, 'base'); return c.json(ch); });
 app.put('/api/characters/:id', async (c) => { await studio.updateCharacterSafe(c.req.param('id'), await c.req.json()); return c.json({ ok: true }); });
+app.post('/api/characters/build', async (c) => { const { id, history, message } = await c.req.json(); return c.json(await studio.buildTurn(id ?? null, history ?? [], message)); });
+app.post('/api/characters/apply', async (c) => { const { id, edits } = await c.req.json(); return c.json(await studio.applyEdits(id ?? null, edits)); });
 app.post('/api/characters/seed', async (c) => { const { inspiration, notes, add } = await c.req.json(); const seed = await studio.seed(inspiration, notes); return c.json(add ? await studio.addSeeded(seed) : seed); });
 app.get('/api/characters/:id/state', async (c) => c.json(await studio.state(c.req.param('id'), c.req.query('asOf') ? Number(c.req.query('asOf')) : undefined)));
 app.get('/api/characters/:id/events', async (c) => c.json(await studio.store.events(c.req.param('id'))));

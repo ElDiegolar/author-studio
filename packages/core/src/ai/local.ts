@@ -25,16 +25,20 @@ export class LocalProvider implements Provider {
 
   async structured<T>(req: CompleteRequest, schema: ZodType<T>, name: string): Promise<T> {
     const sys = `${req.system}\n\nReply with ONLY a JSON value named ${name} matching this shape, no prose:\n${describe(schema)}`;
-    let last = '';
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const { text } = await this.complete({ ...req, system: sys });
+    let last = ''; let why = '';
+    let messages = req.messages;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { text } = await this.complete({ ...req, system: sys, messages });
       last = text;
       try {
         const parsed = schema.safeParse(extractJson(text));
         if (parsed.success) return parsed.data;
-      } catch { /* retry */ }
+        why = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+      } catch (e) { why = (e as Error).message; }
+      // tell the model exactly what was wrong and ask again
+      messages = [...req.messages, { role: 'assistant', content: text }, { role: 'user', content: `That JSON was invalid (${why}). Return only the corrected JSON.` }];
     }
-    throw new Error(`local provider could not produce valid ${name}: ${last.slice(0, 200)}`);
+    throw new Error(`local provider could not produce valid ${name} (${why}): ${last.slice(0, 200)}`);
   }
 }
 

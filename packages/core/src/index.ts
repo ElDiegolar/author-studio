@@ -8,3 +8,4 @@ export * from './prompts/index.js';
 export * from './style/profile.js';
 export * from './verify/verifier.js';
 export { Studio } from './studio.js';
+export * from './agent.js';

@@ -16,8 +16,15 @@ export function defaultAiConfig(): AiConfig {
   const strong = haveClaude ? ('anthropic' as const) : ('local' as const);
   const local = { provider: 'local' as const, model: process.env.AUTHOR_LOCAL_MODEL ?? 'bonsai2-9b' };
   const s = { provider: strong, model: strong === 'anthropic' ? (process.env.AUTHOR_MODEL ?? 'claude-opus-5-5') : local.model };
+  // Per-role overrides: AUTHOR_MODEL_ARCHITECT=claude-haiku-5-5 etc. Any claude-* value selects the Anthropic provider.
+  const role = (r: Role, fallback: { provider: 'anthropic' | 'local'; model?: string }) => {
+    const m = process.env[`AUTHOR_MODEL_${r.toUpperCase()}`];
+    if (!m) return fallback;
+    return m.startsWith('claude-') ? { provider: 'anthropic' as const, model: m } : { provider: 'local' as const, model: m };
+  };
+  const cheap = haveClaude ? { provider: 'anthropic' as const, model: process.env.AUTHOR_MODEL_CHEAP ?? 'claude-haiku-5-5' } : local;
   return {
-    roles: { architect: s, drafter: s, actor: s, editor: s, extractor: local },
+    roles: { architect: role('architect', s), drafter: role('drafter', s), actor: role('actor', s), editor: role('editor', s), extractor: role('extractor', cheap) },
     localUrl: process.env.AUTHOR_LOCAL_URL ?? 'http://127.0.0.1:8081/v1',
     localThinking: process.env.AUTHOR_LOCAL_THINKING === '1',
   };

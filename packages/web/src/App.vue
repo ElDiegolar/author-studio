@@ -3,7 +3,9 @@ import { computed, onMounted, ref } from 'vue';
 import { diffWords } from 'diff';
 import { api, type Bible, type Character, type Finding, type Scene, type Version } from './api';
 
-const tab = ref<'bible' | 'scenes' | 'room' | 'muse' | 'style' | 'verify'>('bible');
+const tab = ref<'studio' | 'bible' | 'scenes' | 'room' | 'muse' | 'style' | 'verify'>('studio');
+const aHistory = ref<{ role: 'user' | 'assistant'; content: string; events?: { kind: string; text: string }[] }[]>([]); const aMsg = ref('');
+async function agentSend() { const m = aMsg.value; aMsg.value = ''; aHistory.value.push({ role: 'user', content: m }); const r = await run('agent working', () => api<{ reply: string; events: { kind: string; text: string }[] }>('/agent', 'POST', { history: aHistory.value.slice(0, -1).map(({ role, content }) => ({ role, content })), message: m })); if (r) { aHistory.value.push({ role: 'assistant', content: r.reply, events: r.events.filter((e) => e.kind === 'action') }); await load(); } }
 const bible = ref<Bible | null>(null);
 const busy = ref(''); const error = ref('');
 async function load() { bible.value = await api<Bible>('/bible'); }
@@ -16,6 +18,10 @@ const byId = (id: string) => bible.value?.characters.find((c) => c.id === id)?.n
 
 // ---- bible ----
 const newChar = ref({ name: '', role: '', summary: '', want: '', need: '', wound: '', arc: '', voiceSample: '', secrets: '' });
+const bId = ref<string | null>(null); const bHistory = ref<{ role: 'user' | 'assistant'; content: string }[]>([]); const bMsg = ref(''); const bEdits = ref<{ op: string; field?: string; key?: string; other?: string; value: string }[]>([]); const bReady = ref(false);
+async function buildSend() { const m = bMsg.value; bMsg.value = ''; const r = await run('builder thinking', () => api<{ reply: string; edits: typeof bEdits.value; ready: boolean }>('/characters/build', 'POST', { id: bId.value, history: bHistory.value, message: m })); if (r) { bHistory.value.push({ role: 'user', content: m }, { role: 'assistant', content: r.reply }); bEdits.value.push(...r.edits); bReady.value = r.ready; } }
+async function buildApply() { const c = await run('writing soul', () => api<Character>('/characters/apply', 'POST', { id: bId.value, edits: bEdits.value })); if (c) { bId.value = c.id; bEdits.value = []; await load(); } }
+function buildStart(id: string | null) { bId.value = id; bHistory.value = []; bEdits.value = []; bReady.value = false; }
 const seedText = ref(''); const seedNotes = ref(''); const seedResult = ref<Record<string, unknown> | null>(null);
 async function addCharacter() { await run('adding', () => api('/characters', 'POST', { ...newChar.value, secrets: newChar.value.secrets.split(';').map((s) => s.trim()).filter(Boolean) })); newChar.value = { name: '', role: '', summary: '', want: '', need: '', wound: '', arc: '', voiceSample: '', secrets: '' }; await load(); }
 async function seed() { seedResult.value = (await run('seeding', () => api<Record<string, unknown>>('/characters/seed', 'POST', { inspiration: seedText.value, notes: seedNotes.value }))) ?? null; }
@@ -75,6 +81,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
   <header>
     <h1>{{ bible?.project.title ?? 'Author Studio' }}</h1>
     <nav>
+      <button :class="{ on: tab === 'studio' }" @click="tab = 'studio'">Studio</button>
       <button :class="{ on: tab === 'bible' }" @click="tab = 'bible'">Bible</button>
       <button :class="{ on: tab === 'scenes' }" @click="tab = 'scenes'">Scenes</button>
       <button :class="{ on: tab === 'room' }" @click="tab = 'room'">Character room</button>
@@ -87,6 +94,13 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
   </header>
 
   <div v-if="!bible" class="muted">loading…</div>
+
+  <!-- STUDIO: everything is chat; the other tabs are the manual editing option -->
+  <div v-else-if="tab === 'studio'" class="card">
+    <h3>Studio <span class="muted">talk to the agent; it reads and writes the book. The other tabs edit by hand.</span></h3>
+    <div class="chat" style="max-height:520px"><template v-for="(h, i) in aHistory" :key="i"><p :class="h.role === 'user' ? 'u' : ''">{{ h.role === 'user' ? 'You: ' : '' }}{{ h.content }}</p><p v-for="(e, j) in h.events ?? []" :key="j" class="muted" style="font:12px/1.4 monospace">▸ {{ e.text }}</p></template><p v-if="!aHistory.length" class="muted">Try: "set the premise: …", "add a character like …", "outline three chapters", "draft scene 2 and let Mara decide for herself", "what does Jonah know as of scene 3?", "I'm stuck on the breakfast scene", "export the book".</p><p v-if="busy" class="muted">{{ busy }}…</p></div>
+    <div class="row"><input v-model="aMsg" placeholder="What do you want done?" style="width:85%" @keyup.enter="agentSend" /><button class="act" :disabled="!aMsg || !!busy" @click="agentSend">Send</button></div>
+  </div>
 
   <!-- BIBLE -->
   <div v-else-if="tab === 'bible'" class="grid">
@@ -110,7 +124,12 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
     <div class="card">
       <h3>Cast</h3>
       <ul class="list"><li v-for="c in bible.characters" :key="c.id" @click="tab = 'room'; openRoom(c.id)"><b>{{ c.name }}</b> <span class="muted">{{ c.role }}</span><br /><span class="muted">{{ c.summary }}</span></li></ul>
-      <h3 style="margin-top:12px">New character</h3>
+      <h3 style="margin-top:12px">Build a character by talking <span class="muted">{{ bId ? 'editing ' + byId(bId) : 'new' }}</span></h3>
+      <div class="row"><button class="ghost" @click="buildStart(null)">New</button><select style="width:auto" @change="buildStart(($event.target as HTMLSelectElement).value || null)"><option value="">edit existing…</option><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select></div>
+      <div class="chat" style="max-height:260px"><p v-for="(h, i) in bHistory" :key="i" :class="h.role === 'user' ? 'u' : ''">{{ h.role === 'user' ? 'You: ' : '' }}{{ h.content }}</p><p v-if="!bHistory.length" class="muted">Describe who you have in mind. The agent asks, proposes, and writes the soul when you apply.</p></div>
+      <div class="row"><input v-model="bMsg" placeholder="e.g. a harbour pilot who is charming and quietly desperate" style="width:75%" @keyup.enter="buildSend" /><button class="act" :disabled="!bMsg || !!busy" @click="buildSend">Send</button></div>
+      <div v-if="bEdits.length" class="card"><h3>Proposed edits <span v-if="bReady" class="ok">ready</span></h3><ul class="list"><li v-for="(e, i) in bEdits" :key="i"><b>{{ e.op }}</b> {{ e.field ?? e.key ?? e.other ?? '' }} → {{ e.value }} <button class="ghost" @click="bEdits.splice(i, 1)">drop</button></li></ul><button class="act" @click="buildApply">Apply to soul</button></div>
+      <h3 style="margin-top:12px">Or fill the sheet directly</h3>
       <input v-model="newChar.name" placeholder="name" /><input v-model="newChar.role" placeholder="role" /><textarea v-model="newChar.summary" placeholder="summary" />
       <input v-model="newChar.want" placeholder="want" /><input v-model="newChar.need" placeholder="need" /><input v-model="newChar.wound" placeholder="wound" /><input v-model="newChar.arc" placeholder="arc" />
       <textarea v-model="newChar.voiceSample" placeholder="voice sample: a few lines they would say" /><input v-model="newChar.secrets" placeholder="secrets; separated; by semicolons" />

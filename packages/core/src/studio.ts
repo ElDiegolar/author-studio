@@ -217,6 +217,47 @@ export class Studio {
     return new Set();
   }
 
+  /** Everything is chat: one author message through the studio agent (tool loop over this facade). */
+  async agent(history: { role: 'user' | 'assistant'; content: string }[], message: string, onEvent?: (e: import('./agent.js').AgentEvent) => void): Promise<{ reply: string; events: import('./agent.js').AgentEvent[] }> {
+    const { runAgent } = await import('./agent.js');
+    return runAgent(this, providerFor('architect', this.ai), history, message, onEvent);
+  }
+
+  // ---- chat-based character building ----
+  /** One turn of the builder conversation. Edits are proposals until applyEdits is called. */
+  async buildTurn(characterId: string | null, history: { role: 'user' | 'assistant'; content: string }[], message: string): Promise<roles.BuilderTurn> {
+    const bible = await this.bible();
+    const current = characterId ? { sheet: Studio.characterOf(bible, characterId), state: await this.state(characterId) } : null;
+    return roles.builderTurn(providerFor('architect', this.ai), bible, current, history, message);
+  }
+
+  /** Apply builder edits: creates the character if none, updates the sheet, appends traits/relationships to the soul, snapshots it. */
+  async applyEdits(characterId: string | null, edits: roles.EditOp[]): Promise<Character> {
+    const bible = await this.bible();
+    const fields = ['name', 'role', 'summary', 'want', 'need', 'wound', 'arc', 'voiceSample'] as const;
+    type F = (typeof fields)[number];
+    let c: Character;
+    if (characterId) c = Studio.characterOf(bible, characterId);
+    else {
+      const name = edits.find((e) => e.op === 'set' && e.field === 'name')?.value;
+      if (!name) throw new Error('a new character needs a name edit first');
+      c = await this.store.addCharacter({ name, role: '', summary: '', want: '', need: '', wound: '', arc: '', voiceSample: '', secrets: [] });
+    }
+    const next: Character = { ...c, secrets: [...c.secrets] };
+    for (const e of edits) {
+      if (e.op === 'set' && e.field && (fields as readonly string[]).includes(e.field)) {
+        next[e.field as F] = e.value;
+        if (e.field !== 'name' && e.field !== 'summary' && e.field !== 'voiceSample' && e.field !== 'arc') await this.store.appendEvent({ type: 'trait.set', characterId: next.id, order: 0, key: e.field, value: e.value });
+        if (e.field === 'name' && e.value !== c.name) await this.store.appendEvent({ type: 'created', characterId: next.id, order: 0, name: e.value });
+      } else if (e.op === 'secret') { if (!next.secrets.includes(e.value)) next.secrets.push(e.value); }
+      else if (e.op === 'trait' && e.key) await this.store.appendEvent({ type: 'trait.set', characterId: next.id, order: 0, key: e.key, value: e.value });
+      else if (e.op === 'relate' && e.other) { if (bible.characters.some((x) => x.id === e.other)) await this.store.appendEvent({ type: 'relationship.set', characterId: next.id, order: 0, other: e.other, relation: e.value }); }
+    }
+    await this.store.updateCharacter(next);
+    await this.store.saveSoul(next.id, characterId ? `edited-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}` : 'base');
+    return next;
+  }
+
   // ---- muse ----
   /**
    * Ideas for writer's block. With `agency` on, each character first decides what they would do in

@@ -5,6 +5,7 @@
  *   author init <dir> --title T --genre G [--audience A] [--words N] [--pov first|third-limited|third-omniscient] [--tense past|present]
  *   author premise <dir> --logline .. --question .. --theme .. --ending ..
  *   author character add <dir> --name .. --role .. --summary .. [--want --need --wound --arc --voice --secret ..]
+ *   author character build <dir> [id]                  chat to create (no id) or edit a character; edits apply when you say 'apply'
  *   author character seed <dir> "like Rick Deckard" [--notes ..] [--add]
  *   author character relate <dir> <id> <otherId> "relation" ["mutual relation"]
  *   author character mirror <dir> <id>                   build the psychological mirror (psyche.* on the soul)
@@ -23,9 +24,11 @@
  *   author proof <dir> <sceneId>
  *   author verify <dir>
  *   author export <dir> [--out book.md]
+ *   author agent <dir>                                chat with the studio agent; it can do everything above
  *   author show <dir>
  */
 import { promises as fs } from 'node:fs';
+import readline from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import { Studio } from '@author-studio/core';
 
@@ -62,6 +65,19 @@ async function main(): Promise<void> {
   const args = grouped ? rest.slice(1) : rest;
 
   switch (cmd) {
+    case 'agent': {
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const history: { role: 'user' | 'assistant'; content: string }[] = [];
+      console.log('Studio agent. Say what you want done; "quit" to stop.');
+      for (;;) {
+        const line = (await rl.question('> ')).trim();
+        if (!line || line === 'quit') break;
+        const r = await studio.agent(history, line, (e) => { if (e.kind === 'action') console.log(`  ▸ ${e.text}`); else if (e.kind === 'thought') console.log(`  · ${e.text}`); });
+        history.push({ role: 'user', content: line }, { role: 'assistant', content: r.reply });
+        console.log(`\n${r.reply}\n`);
+      }
+      rl.close(); return;
+    }
     case 'show': {
       const b = await studio.bible();
       print({ project: b.project.title, characters: b.characters.map((c) => `${c.id} ${c.name} (${c.role})`), world: b.world.map((w) => `${w.id} ${w.name}`), scenes: b.scenes.map((s) => `${s.id} #${s.order} ch${s.chapter} [${s.status}] ${s.title}`), facts: b.facts.length });
@@ -78,6 +94,25 @@ async function main(): Promise<void> {
         const c = await studio.store.addCharacter({ name: str(v.name, 'name'), role: str(v.role, 'role'), summary: v.summary ?? '', want: v.want!, need: v.need!, wound: v.wound!, arc: v.arc!, voiceSample: v.voice!, secrets: list(v.secret) });
         await studio.store.saveSoul(c.id, 'base');
         print(c); return;
+      }
+      if (sub === 'build') {
+        let id: string | null = args[0] ?? null;
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const history: { role: 'user' | 'assistant'; content: string }[] = [];
+        let pending: import('@author-studio/core').EditOp[] = [];
+        console.log(id ? `Editing ${id}. Talk; say "apply" to write the proposed edits, "quit" to stop.` : 'New character. Describe who you have in mind; say "apply" to create them from the proposed edits, "quit" to stop.');
+        for (;;) {
+          const line = (await rl.question('> ')).trim();
+          if (!line || line === 'quit') break;
+          if (line === 'apply') { if (!pending.length) { console.log('(nothing proposed yet)'); continue; } const c = await studio.applyEdits(id, pending); id = c.id; pending = []; console.log(`applied -> ${c.id} ${c.name}`); continue; }
+          const t = await studio.buildTurn(id, history, line);
+          history.push({ role: 'user', content: line }, { role: 'assistant', content: t.reply });
+          pending.push(...t.edits);
+          console.log(`\n${t.reply}\n`);
+          if (t.edits.length) console.log('proposed edits:', t.edits.map((e) => `${e.op} ${e.field ?? e.key ?? e.other ?? ''}=${e.value}`).join(' | '));
+          if (t.ready) console.log('(the builder thinks this character is ready; say "apply")');
+        }
+        rl.close(); return;
       }
       if (sub === 'mirror') { print(await studio.mirror(args[0]!)); return; }
       if (sub === 'decide') { const { v, pos } = opts(args, { 'as-of': { type: 'string' } }); print(await studio.decide(pos[0]!, pos[1]!, num(v['as-of']))); return; }

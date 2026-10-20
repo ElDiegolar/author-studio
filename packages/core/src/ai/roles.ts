@@ -2,7 +2,7 @@ import { z } from 'zod/v4';
 import type { Bible, Character, Fact, Scene } from '../types.js';
 import type { CharacterState } from '../character/replay.js';
 import type { Provider } from './provider.js';
-import { ACTOR_SYSTEM, ARCHITECT_SYSTEM, DRAFTER_SYSTEM, EDITOR_SYSTEM, EXTRACTOR_SYSTEM, DECIDE_SYSTEM, MIRROR_SYSTEM, MUSE_SYSTEM, PROOFREADER_SYSTEM, SEED_SYSTEM, STYLE_SHEET_SYSTEM, WITNESS_SYSTEM, bibleBrief, characterStateBrief, sceneCard } from '../prompts/index.js';
+import { ACTOR_SYSTEM, ARCHITECT_SYSTEM, BUILDER_SYSTEM, DRAFTER_SYSTEM, EDITOR_SYSTEM, EXTRACTOR_SYSTEM, DECIDE_SYSTEM, MIRROR_SYSTEM, MUSE_SYSTEM, PROOFREADER_SYSTEM, SEED_SYSTEM, STYLE_SHEET_SYSTEM, WITNESS_SYSTEM, bibleBrief, characterStateBrief, sceneCard } from '../prompts/index.js';
 import type { StyleProfile } from '../style/profile.js';
 import { styleInstructions } from '../style/profile.js';
 
@@ -213,4 +213,22 @@ export type Decision = z.infer<typeof DecisionSchema>;
 export async function decide(p: Provider, c: Character, st: CharacterState, situation: string, known = ''): Promise<Decision> {
   const user = `WHO YOU ARE\n${characterStateBrief(c, st)}${known ? `\n\nPEOPLE YOU KNOW\n${known}` : ''}\n\nSITUATION\n${situation}\n\nDecide.`;
   return p.structured({ system: DECIDE_SYSTEM, messages: [{ role: 'user', content: user }], effort: 'high', maxTokens: 3000 }, DecisionSchema, 'decision');
+}
+
+export const EditOpSchema = z.object({
+  op: z.enum(['set', 'secret', 'trait', 'relate']),
+  field: z.string().optional().describe('for set: name|role|summary|want|need|wound|arc|voiceSample'),
+  key: z.string().optional().describe('for trait'),
+  other: z.string().optional().describe('for relate: existing character id'),
+  value: z.coerce.string(),
+});
+export type EditOp = z.infer<typeof EditOpSchema>;
+export const BuilderTurnSchema = z.object({ reply: z.string(), edits: z.array(EditOpSchema), ready: z.boolean() })
+  .describe('{"reply":"...","edits":[{"op":"set","field":"name","value":"Mara Voss"},{"op":"trait","key":"habit","value":"..."},{"op":"relate","other":"c_xxx","value":"older brother"}],"ready":false}');
+export type BuilderTurn = z.infer<typeof BuilderTurnSchema>;
+
+export async function builderTurn(p: Provider, bible: Bible, current: { sheet: Character; state: CharacterState } | null, history: { role: 'user' | 'assistant'; content: string }[], message: string): Promise<BuilderTurn> {
+  const ctx = current ? `CHARACTER SO FAR\n${characterStateBrief(current.sheet, current.state)}` : 'No character yet. Start from what the author says.';
+  const system = `${BUILDER_SYSTEM}\n\nTHE NOVEL\n${bibleBrief(bible)}\n\n${ctx}`;
+  return p.structured({ system, messages: [...history, { role: 'user', content: message }], effort: 'medium', maxTokens: 3000 }, BuilderTurnSchema, 'turn');
 }
