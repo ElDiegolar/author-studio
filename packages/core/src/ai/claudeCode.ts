@@ -32,7 +32,9 @@ export class ClaudeCodeProvider implements Provider {
     const prompt = req.messages.length === 1
       ? req.messages[0]!.content
       : req.messages.map((m) => (m.role === 'user' ? `AUTHOR:\n${m.content}` : `YOU (earlier):\n${m.content}`)).join('\n\n') + '\n\nRespond to the last AUTHOR message.';
-    const args = ['-p', prompt, '--model', this.model, '--output-format', 'json', '--tools', '', '--no-session-persistence', '--system-prompt', req.system];
+    // --tools '' drops built-in tools; --strict-mcp-config with an empty config drops the user's MCP servers,
+    // otherwise the nested claude sees (and tries to use) every server registered on this machine.
+    const args = ['-p', prompt, '--model', this.model, '--output-format', 'json', '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--no-session-persistence', '--system-prompt', req.system];
     if (jsonSchema) args.push('--json-schema', jsonSchema);
     const env = { ...process.env };
     // A nested claude must not inherit the parent session's identity.
