@@ -219,7 +219,9 @@ export class Studio {
 
   /** Everything is chat: one author message through the studio agent (tool loop over this facade). */
   async agent(history: { role: 'user' | 'assistant'; content: string }[], message: string, onEvent?: (e: import('./agent.js').AgentEvent) => void): Promise<{ reply: string; events: import('./agent.js').AgentEvent[] }> {
-    const { runAgent } = await import('./agent.js');
+    const { runAgent, runNativeAgent } = await import('./agent.js');
+    const role = this.ai.roles.architect;
+    if (role.provider === 'claude-code') return runNativeAgent(this.store.dir, role.model ?? 'claude-haiku-5-5', history, message, onEvent);
     return runAgent(this, providerFor('architect', this.ai), history, message, onEvent);
   }
 

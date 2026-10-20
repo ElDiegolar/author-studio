@@ -1,6 +1,31 @@
 import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, symlinkSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { z, type ZodType } from 'zod/v4';
 import { extractJson, type CompleteRequest, type CompleteResult, type Provider } from './provider.js';
+
+/**
+ * A private CLAUDE_CONFIG_DIR for nested runs: the author's credentials (symlinked) and nothing else,
+ * so the studio never inherits the machine's hooks, MCP servers, memory or settings.
+ */
+export function isolatedClaudeConfigDir(): string {
+  const dir = process.env.AUTHOR_CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.config', 'author-studio', 'claude');
+  const creds = path.join(dir, '.credentials.json');
+  const source = path.join(process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'), '.credentials.json');
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (!existsSync(creds) && existsSync(source)) symlinkSync(source, creds);
+  } catch { /* best effort: claude will report auth problems itself */ }
+  return dir;
+}
+
+/** Spawn args and env shared by every nested claude run. */
+export function nestedClaudeEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_CONFIG_DIR: isolatedClaudeConfigDir() };
+  for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_CODE_') || k === 'CLAUDECODE' || k === 'CLAUDE_PID') delete env[k];
+  return env;
+}
 
 /**
  * Headless Claude Code as a provider: every call is `claude -p … --output-format json`.
@@ -36,11 +61,8 @@ export class ClaudeCodeProvider implements Provider {
     // otherwise the nested claude sees (and tries to use) every server registered on this machine.
     const args = ['-p', prompt, '--model', this.model, '--output-format', 'json', '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--no-session-persistence', '--system-prompt', req.system];
     if (jsonSchema) args.push('--json-schema', jsonSchema);
-    const env = { ...process.env };
-    // A nested claude must not inherit the parent session's identity.
-    for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_CODE_') || k === 'CLAUDECODE' || k === 'CLAUDE_PID') delete env[k];
     return new Promise((resolve, reject) => {
-      const child = spawn(this.bin, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(this.bin, args, { env: nestedClaudeEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = ''; let stderr = '';
       child.stdout.on('data', (d) => { stdout += d; });
       child.stderr.on('data', (d) => { stderr += d; });

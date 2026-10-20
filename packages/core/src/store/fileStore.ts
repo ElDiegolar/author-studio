@@ -60,6 +60,14 @@ export class FileStore {
     return e;
   }
 
+  async updateWorld(e: WorldEntry): Promise<void> {
+    const all = await this.readJson<WorldEntry[]>('world.json');
+    const i = all.findIndex((x) => x.id === e.id);
+    if (i < 0) throw new Error(`no world entry ${e.id}`);
+    all[i] = e;
+    await this.writeJson('world.json', all);
+  }
+
   async addCharacter(c: Omit<Character, 'id'>): Promise<Character> {
     const all = await this.readJson<Character[]>('characters.json');
     const ch: Character = { ...c, id: newId('c') };

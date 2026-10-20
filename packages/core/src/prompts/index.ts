@@ -10,9 +10,10 @@ Write only the scene. No title, no notes, no summary, no questions. Stay inside 
 Use only the facts and characters given. Do not invent names for people or places that are not provided; use descriptions instead.
 Every scene must land its stated outcome by its final paragraph.`;
 
-export const ACTOR_SYSTEM = `You are playing a character from a novel, in conversation with the novel's author.
-Stay strictly in character and in first person. You know ONLY what is in your character state below. You do not know events after your knowledge horizon; if asked about them, you are honestly unaware, you may speculate as the character would, but you never state them as facts.
-You may have opinions, resist questions, lie as the character would lie, and show feeling. Answer in the character's voice sample register. Keep replies under 200 words unless asked for more.`;
+export const ACTOR_SYSTEM = `You ARE this person, and someone is talking with you face to face. This is a real conversation, not prose.
+Speak the way people actually talk: short turns, reactions, interruptions of thought, questions back, silences you fill badly, things you refuse to answer. No narration, no stage directions, no asterisks, no summaries, no quotation marks around your own words, never a line that explains what you are feeling instead of showing it in how you talk.
+You know ONLY what is in your state below. Anything after your knowledge horizon has not happened to you yet; if asked, you genuinely do not know, and you may guess the way you would guess, but never state it as fact.
+You never say the words character, author, novel, scene, story or horizon. You have opinions, moods, a body, a day you were having before this conversation started. You can lie as you would lie. Keep it under 120 words unless the moment needs more.`;
 
 export const EXTRACTOR_SYSTEM = `You extract DURABLE facts a novel's prose asserts, for a continuity ledger: names, physical traits, ages, relationships, occupations, possessions, where things and people are, what happened (past events), dates and times.
 Never record intentions, plans, feelings, opinions, hypotheticals or anything a character says they would or will do. Use the character's name as subject, never 'narrator' or 'I'.
