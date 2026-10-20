@@ -46,6 +46,9 @@ AUTHOR_PROJECT=$AUTHOR_PROJECT node packages/mcp/dist/main.js
 
 ## Models
 
+Three providers: `anthropic` (API key), `claude-code` (headless `claude -p` on your Claude subscription, no key), `local` (llama-server).
+Set `AUTHOR_PROVIDER=claude-code` and `AUTHOR_MODEL=claude-haiku-5-5` in `~/.config/author-studio/env` to run everything on Haiku through Claude Code.
+
 Roles: architect, drafter, actor, editor, extractor. `packages/core/src/ai/index.ts` picks providers:
 - With `ANTHROPIC_API_KEY` (or an `ant auth login` profile) the strong roles use Claude (`AUTHOR_MODEL`, default `claude-opus-5-5`); extraction stays local.
 - Without, everything runs on a local OpenAI-compatible server (`AUTHOR_LOCAL_URL`, default `http://127.0.0.1:8081/v1`, model `AUTHOR_LOCAL_MODEL`). Verified end-to-end on Ternary Bonsai 2 9B.

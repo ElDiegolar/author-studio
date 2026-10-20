@@ -16,29 +16,32 @@ export function loadEnvFiles(): void {
 }
 loadEnvFiles();
 import { LocalProvider } from './local.js';
+import { ClaudeCodeProvider } from './claudeCode.js';
 import type { Provider } from './provider.js';
 
 export type Role = 'architect' | 'drafter' | 'actor' | 'extractor' | 'editor';
 
 export interface AiConfig {
   /** Provider per role. 'anthropic' needs credentials; 'local' needs llama-server. */
-  roles: Record<Role, { provider: 'anthropic' | 'local'; model?: string }>;
+  roles: Record<Role, { provider: 'anthropic' | 'local' | 'claude-code'; model?: string }>;
   localUrl: string;
   localThinking: boolean;
 }
 
 export function defaultAiConfig(): AiConfig {
   const haveClaude = Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.AUTHOR_USE_CLAUDE);
-  const strong = haveClaude ? ('anthropic' as const) : ('local' as const);
+  // AUTHOR_PROVIDER=claude-code routes every call through headless `claude -p` on the author's subscription.
+  const forced = process.env.AUTHOR_PROVIDER as 'anthropic' | 'local' | 'claude-code' | undefined;
+  const strong = forced ?? (haveClaude ? ('anthropic' as const) : ('local' as const));
   const local = { provider: 'local' as const, model: process.env.AUTHOR_LOCAL_MODEL ?? 'bonsai2-9b' };
-  const s = { provider: strong, model: strong === 'anthropic' ? (process.env.AUTHOR_MODEL ?? 'claude-opus-5-5') : local.model };
+  const s = { provider: strong, model: strong === 'local' ? local.model : (process.env.AUTHOR_MODEL ?? 'claude-opus-5-5') };
   // Per-role overrides: AUTHOR_MODEL_ARCHITECT=claude-haiku-5-5 etc. Any claude-* value selects the Anthropic provider.
-  const role = (r: Role, fallback: { provider: 'anthropic' | 'local'; model?: string }) => {
+  const role = (r: Role, fallback: { provider: 'anthropic' | 'local' | 'claude-code'; model?: string }) => {
     const m = process.env[`AUTHOR_MODEL_${r.toUpperCase()}`];
     if (!m) return fallback;
-    return m.startsWith('claude-') ? { provider: 'anthropic' as const, model: m } : { provider: 'local' as const, model: m };
+    return m.startsWith('claude-') ? { provider: strong === 'local' ? ('anthropic' as const) : strong, model: m } : { provider: 'local' as const, model: m };
   };
-  const cheap = haveClaude ? { provider: 'anthropic' as const, model: process.env.AUTHOR_MODEL_CHEAP ?? 'claude-haiku-5-5' } : local;
+  const cheap = strong === 'local' ? local : { provider: strong, model: process.env.AUTHOR_MODEL_CHEAP ?? 'claude-haiku-5-5' };
   return {
     roles: { architect: role('architect', s), drafter: role('drafter', s), actor: role('actor', s), editor: role('editor', s), extractor: role('extractor', cheap) },
     localUrl: process.env.AUTHOR_LOCAL_URL ?? 'http://127.0.0.1:8081/v1',
@@ -52,11 +55,11 @@ export function providerFor(role: Role, cfg: AiConfig = defaultAiConfig()): Prov
   const key = `${r.provider}:${r.model ?? ''}`;
   let p = cache.get(key);
   if (!p) {
-    p = r.provider === 'anthropic' ? new AnthropicProvider(r.model) : new LocalProvider(cfg.localUrl, r.model, cfg.localThinking);
+    p = r.provider === 'anthropic' ? new AnthropicProvider(r.model) : r.provider === 'claude-code' ? new ClaudeCodeProvider(r.model) : new LocalProvider(cfg.localUrl, r.model, cfg.localThinking);
     cache.set(key, p);
   }
   return p;
 }
 
-export { AnthropicProvider, LocalProvider };
+export { AnthropicProvider, LocalProvider, ClaudeCodeProvider };
 export type { Provider } from './provider.js';
