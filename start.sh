@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 . "$HOME/.nvm/nvm.sh" >/dev/null
 export AUTHOR_PROJECT="${1:-$HOME/novels/the-salt-road}"
+# secrets: ~/.config/author-studio/env or ./.env (ANTHROPIC_API_KEY=..., AUTHOR_MODEL=...)
 export PORT="${PORT:-8790}"
 [ -d packages/web/dist ] || npm run build
 exec node packages/server/dist/main.js

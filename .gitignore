@@ -4,3 +4,4 @@ dist/
 .DS_Store
 # novels live outside the repo (~/novels); never commit a manuscript by accident
 novels/
+.env

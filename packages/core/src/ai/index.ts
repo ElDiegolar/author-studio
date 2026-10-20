@@ -1,4 +1,20 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { AnthropicProvider } from './anthropic.js';
+
+/** Load KEY=value lines from ~/.config/author-studio/env and ./.env into process.env (existing vars win). No dependency needed. */
+export function loadEnvFiles(): void {
+  const home = process.env.HOME ?? '';
+  for (const f of [path.join(home, '.config', 'author-studio', 'env'), path.resolve('.env')]) {
+    try {
+      for (const line of readFileSync(f, 'utf8').split('\n')) {
+        const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
+        if (m && process.env[m[1]!] === undefined) process.env[m[1]!] = m[2]!.replace(/^["']|["']$/g, '');
+      }
+    } catch { /* no file */ }
+  }
+}
+loadEnvFiles();
 import { LocalProvider } from './local.js';
 import type { Provider } from './provider.js';
 
