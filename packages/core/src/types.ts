@@ -87,6 +87,8 @@ export interface Fact {
   predicate: string;
   object: string;
   text: string;
+  /** True when the property can hold only one value at a time (eye colour, age, birthplace). Only these can contradict. */
+  single?: boolean;
 }
 
 export interface Bible {

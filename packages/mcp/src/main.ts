@@ -9,7 +9,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { Studio } from '@author-studio/core';
+import { Studio, studioTools } from '@author-studio/core';
 
 const dir = process.env.AUTHOR_PROJECT;
 if (!dir) { console.error('AUTHOR_PROJECT is required'); process.exit(1); }
@@ -77,5 +77,11 @@ server.tool('add_fact', 'Assert a continuity fact by hand', { sceneId: z.string(
 server.tool('proofread', 'Proofreading issues for a scene', { id: z.string() }, async ({ id }) => text(await studio.proofread(id)));
 server.tool('verify', 'Deterministic checks: continuity contradictions, timeline, per-scene style/POV/length', {}, async () => text(await studio.verifyAll()));
 server.tool('export_markdown', 'The manuscript as Markdown', {}, async () => text(await studio.exportMarkdown()));
+
+// Edit tools shared with the in-process agent, so every agent path can change what it created.
+for (const name of ['set_premise', 'set_voice', 'edit_character', 'edit_scene', 'edit_world']) {
+  const t = studioTools(studio).find((x) => x.name === name);
+  if (t) server.tool(name, t.description + ' (scene references are scene ORDER numbers)', { args: z.record(z.string(), z.unknown()).describe('the named fields') }, async ({ args }) => text(await t.run(args)));
+}
 
 await server.connect(new StdioServerTransport());

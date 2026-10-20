@@ -23,8 +23,8 @@ export const OutlineSchema = z.object({ scenes: z.array(SceneCardSchema) })
   .describe('{"scenes":[{"chapter":1,"title":"...","pov":"c_xxx","location":"...","time":"...","goal":"...","conflict":"...","outcome":"...","characters":["c_xxx"],"targetWords":1500}]}');
 
 export const FactsSchema = z.object({
-  facts: z.array(z.object({ subject: z.string(), predicate: z.string(), object: z.string(), text: z.string() })),
-}).describe('{"facts":[{"subject":"mara","predicate":"eye colour","object":"grey","text":"Mara\'s grey eyes"}]}');
+  facts: z.array(z.object({ subject: z.string(), predicate: z.string(), object: z.string(), text: z.string(), single: z.boolean().describe('true only if this property can have exactly one value at a time: eye colour, age, birthplace, name, relationship to X. false for actions, possessions, events, locations') })),
+}).describe('{"facts":[{"subject":"mara","predicate":"eye colour","object":"grey","text":"Mara\'s grey eyes","single":true}]}');
 
 export const WitnessSchema = z.object({
   summary: z.string(),
@@ -64,7 +64,11 @@ export interface DraftContext {
 export function draftPrompt(ctx: DraftContext): { system: string; user: string } {
   const chars = ctx.bible.characters;
   const present = ctx.scene.characters.map((id) => chars.find((c) => c.id === id)).filter((c): c is Character => Boolean(c));
-  const system = `${DRAFTER_SYSTEM}\n\n${styleInstructions(ctx.style, ctx.bible.project.voice)}`;
+  const pov = chars.find((c) => c.id === ctx.scene.pov)?.name ?? 'the POV character';
+  const povRule = ctx.bible.project.voice.pov === 'first'
+    ? `Narrate in first person as ${pov}.`
+    : `Narrate in ${ctx.bible.project.voice.pov.replace('-', ' ')} person: refer to ${pov} by name and pronoun. Never use "I", "me" or "my" outside quoted dialogue, even though the character notes below are written in second person.`;
+  const system = `${DRAFTER_SYSTEM}\n${povRule}\nIf a character's decision conflicts with the scene card, the decision wins: adapt the conflict to it.\n\n${styleInstructions(ctx.style, ctx.bible.project.voice)}`;
   const user = [
     bibleBrief(ctx.bible),
     '',

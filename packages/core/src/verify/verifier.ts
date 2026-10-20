@@ -52,7 +52,7 @@ export function continuity(facts: Fact[]): Finding[] {
   const seen = new Map<string, Fact>();
   const volatile = /^(would|will|plan|intend|feel|think|want|decide|say|said|location|position)/;
   for (const f of [...facts].sort((a, b) => a.order - b.order)) {
-    if (volatile.test(f.predicate) || f.subject === 'narrator' || f.subject === 'i') continue; // locations and intentions change scene to scene
+    if (f.single === false || volatile.test(f.predicate) || f.subject === 'narrator' || f.subject === 'i') continue; // locations and intentions change scene to scene
     const key = `${f.subject}|${f.predicate}`;
     const prev = seen.get(key);
     if (prev && prev.object !== f.object)
