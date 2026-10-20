@@ -1,0 +1,4 @@
+{ "name": "@author-studio/server", "version": "0.1.0", "type": "module",
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "dev": "tsx src/main.ts", "start": "node dist/main.js" },
+  "dependencies": { "@author-studio/core": "0.1.0", "hono": "^4.6.0", "@hono/node-server": "^1.13.0", "diff": "^7.0.0" },
+  "devDependencies": { "@types/diff": "^6.0.0" } }

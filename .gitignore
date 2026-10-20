@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+# novels live outside the repo (~/novels); never commit a manuscript by accident
+novels/
