@@ -2,9 +2,9 @@ import { z } from 'zod/v4';
 import type { Bible, Character, Fact, Scene } from '../types.js';
 import type { CharacterState } from '../character/replay.js';
 import type { Provider } from './provider.js';
-import { ACTOR_SYSTEM, ARCHITECT_SYSTEM, BUILDER_SYSTEM, DRAFTER_SYSTEM, EDITOR_SYSTEM, EXTRACTOR_SYSTEM, DECIDE_SYSTEM, MIRROR_SYSTEM, MUSE_SYSTEM, PROOFREADER_SYSTEM, SEED_SYSTEM, STYLE_SHEET_SYSTEM, WITNESS_SYSTEM, bibleBrief, characterStateBrief, sceneCard } from '../prompts/index.js';
-import type { StyleProfile } from '../style/profile.js';
-import { styleInstructions } from '../style/profile.js';
+import { ACTOR_SYSTEM, ARCHITECT_SYSTEM, BUILDER_SYSTEM, DRAFTER_SYSTEM, EDITOR_SYSTEM, EXTRACTOR_SYSTEM, LEARN_RULES_SYSTEM, DECIDE_SYSTEM, MIRROR_SYSTEM, MUSE_SYSTEM, PROOFREADER_SYSTEM, SEED_SYSTEM, STYLE_SHEET_SYSTEM, WITNESS_SYSTEM, bibleBrief, characterStateBrief, sceneCard } from '../prompts/index.js';
+import { styleInstructions, type StyleView } from '../writer/instructions.js';
+import type { WriterEdit, WriterRule } from '../writer/replay.js';
 
 // ---- schemas (the .description doubles as the example small local models follow) ----
 export const SceneCardSchema = z.object({
@@ -56,7 +56,7 @@ export interface DraftContext {
   states: CharacterState[]; // states of present characters as of scene.order - 1
   facts: Fact[]; // relevant facts so far
   previousSummary: string;
-  style: StyleProfile;
+  style: StyleView;
   /** Decisions the present characters have already made for this scene; the prose must honour them. */
   decisions?: { name: string; decision: string; emotion: string }[];
 }
@@ -68,7 +68,7 @@ export function draftPrompt(ctx: DraftContext): { system: string; user: string }
   const povRule = ctx.bible.project.voice.pov === 'first'
     ? `Narrate in first person as ${pov}.`
     : `Narrate in ${ctx.bible.project.voice.pov.replace('-', ' ')} person: refer to ${pov} by name and pronoun. Never use "I", "me" or "my" outside quoted dialogue, even though the character notes below are written in second person.`;
-  const system = `${DRAFTER_SYSTEM}\n${povRule}\nIf a character's decision conflicts with the scene card, the decision wins: adapt the conflict to it.\n\n${styleInstructions(ctx.style, ctx.bible.project.voice)}`;
+  const system = `${DRAFTER_SYSTEM}\n${povRule}\nIf a character's decision conflicts with the scene card, the decision wins: adapt the conflict to it.\n\n${styleInstructions(ctx.style, ctx.bible.project.voice, `${ctx.scene.title} ${ctx.scene.goal} ${ctx.scene.conflict}`)}`;
   const user = [
     bibleBrief(ctx.bible),
     '',
@@ -96,7 +96,7 @@ export async function draft(p: Provider, ctx: DraftContext): Promise<string> {
   return text.trim();
 }
 
-export async function edit(p: Provider, passage: string, note: string, style: StyleProfile, bible: Bible): Promise<string> {
+export async function edit(p: Provider, passage: string, note: string, style: StyleView, bible: Bible): Promise<string> {
   const { text } = await p.complete({
     system: `${EDITOR_SYSTEM}\n\n${styleInstructions(style, bible.project.voice)}`,
     messages: [{ role: 'user', content: `NOTE: ${note}\n\nPASSAGE:\n${passage}` }],
@@ -141,6 +141,34 @@ export async function styleSheet(p: Provider, samples: string[]): Promise<string
     maxTokens: 1500,
   });
   return text.trim();
+}
+
+export const LearnedRulesSchema = z.object({
+  rules: z.array(z.object({
+    text: z.string().describe('one imperative rule a drafter can follow'),
+    evidence: z.string().describe('short before -> after quote from the edits'),
+  })),
+}).describe('{"rules":[{"text":"...","evidence":"..."}]}');
+
+/**
+ * Learn the author's rules from their rewrites of AI drafts. Returns proposals only; the author
+ * confirms or rejects each one. Known rules are passed in so a repeat reuses the exact text.
+ */
+export async function learnRules(p: Provider, edits: WriterEdit[], known: WriterRule[]): Promise<z.infer<typeof LearnedRulesSchema>['rules']> {
+  const pairs = edits.map((e, i) => `EDIT ${i + 1}\nAI DRAFT:\n${e.draft.slice(0, 2500)}\nAUTHOR'S VERSION:\n${e.final.slice(0, 2500)}`).join('\n\n');
+  const knownList = known.filter((r) => r.status !== 'rejected').map((r) => `- [${r.status}] ${r.text}`).join('\n');
+  const rejected = known.filter((r) => r.status === 'rejected').map((r) => `- ${r.text}`).join('\n');
+  const res = await p.structured(
+    {
+      system: LEARN_RULES_SYSTEM,
+      messages: [{ role: 'user', content: `${knownList ? `KNOWN RULES (reuse the exact text if the edits support one again):\n${knownList}\n\n` : ''}${rejected ? `REJECTED BY THE AUTHOR (never propose these):\n${rejected}\n\n` : ''}${pairs}` }],
+      effort: 'medium',
+      maxTokens: 2000,
+    },
+    LearnedRulesSchema,
+    'learned_rules',
+  );
+  return res.rules.slice(0, 6);
 }
 
 function norm(s: string): string { return s.trim().toLowerCase().replace(/\s+/g, ' '); }

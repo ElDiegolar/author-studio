@@ -9,17 +9,29 @@ import { providerFor, type AiConfig, defaultAiConfig } from './ai/index.js';
 import * as roles from './ai/roles.js';
 import { replay, psycheOf, type CharacterState } from './character/replay.js';
 import type { Bible, Character, Fact, Premise, Project, Scene, SceneVersion } from './types.js';
-import { addSample, emptyProfile, type StyleProfile } from './style/profile.js';
-import { continuity, leaks, timeline, verifyScene, type Finding } from './verify/verifier.js';
+import type { StyleProfile } from './style/profile.js';
+import { continuity, leaks, styleDrift, timeline, verifyScene, type Finding } from './verify/verifier.js';
+import { WriterStore } from './writer/store.js';
+import { replayWriter, type WriterRule, type WriterState } from './writer/replay.js';
+import { ruleIdOf } from './writer/events.js';
+
+/** After this many unlearned edits, saving author text runs a learning pass on its own. */
+const AUTO_LEARN_EVERY = 3;
 
 export class Studio {
-  constructor(readonly store: FileStore, readonly ai: AiConfig = defaultAiConfig()) {}
+  constructor(readonly store: FileStore, readonly ai: AiConfig = defaultAiConfig(), readonly writerStore: WriterStore = WriterStore.forWriter('default')) {}
 
-  static async init(dir: string, project: Omit<Project, 'id' | 'createdAt'>, premise: Premise): Promise<Studio> {
-    return new Studio(await FileStore.init(dir, project, premise));
+  static async init(dir: string, project: Omit<Project, 'id' | 'createdAt'>, premise: Premise, opts: { ai?: AiConfig; writerStore?: WriterStore } = {}): Promise<Studio> {
+    const store = await FileStore.init(dir, project, premise);
+    return new Studio(store, opts.ai, opts.writerStore ?? WriterStore.forWriter(project.writer ?? 'default'));
   }
-  static async open(dir: string, ai?: AiConfig): Promise<Studio> {
-    return new Studio(await FileStore.open(dir), ai);
+  /** Open a project with its writer soul; a legacy style.json is folded into the soul once. */
+  static async open(dir: string, ai?: AiConfig, opts: { writerStore?: WriterStore } = {}): Promise<Studio> {
+    const store = await FileStore.open(dir);
+    const project = (await store.bible()).project;
+    const studio = new Studio(store, ai, opts.writerStore ?? WriterStore.forWriter(project.writer ?? 'default'));
+    await studio.importLegacyStyle();
+    return studio;
   }
 
   bible(): Promise<Bible> { return this.store.bible(); }
@@ -44,25 +56,84 @@ export class Studio {
     return next;
   }
 
-  // ---- style ----
-  private stylePath(): string { return path.join(this.store.dir, 'style.json'); }
-  async style(): Promise<StyleProfile> {
-    try { return JSON.parse(await fs.readFile(this.stylePath(), 'utf8')) as StyleProfile; } catch { return emptyProfile(); }
+  // ---- writer soul (style) ----
+  private async projectId(): Promise<string> { return (await this.bible()).project.id; }
+
+  /** The writer as of `asOf` (ISO), or as of the project's pinned writerAsOf, or everything. */
+  async writer(asOf?: string | null): Promise<WriterState> {
+    const at = asOf === undefined ? (await this.bible()).project.writerAsOf ?? null : asOf;
+    return replayWriter(this.writerStore.writerId, await this.writerStore.events(), at);
   }
-  private async saveStyle(p: StyleProfile): Promise<void> { await fs.writeFile(this.stylePath(), JSON.stringify(p, null, 2)); }
+  /** Kept for the front ends: the style profile is now the writer soul. */
+  style(): Promise<WriterState> { return this.writer(); }
+
   /** Feed the author's own prose in; the drafter imitates it from then on. */
-  async addStyleSample(text: string, source: 'author-sample' | 'author-edit' = 'author-sample', sceneId?: string): Promise<StyleProfile> {
-    const p = addSample(await this.style(), sceneId ? { text, source, sceneId } : { text, source });
-    await this.saveStyle(p);
-    return p;
+  async addStyleSample(text: string, source: 'author-sample' | 'author-edit' = 'author-sample', sceneId?: string): Promise<WriterState> {
+    await this.writerStore.append({ type: 'sample.added', projectId: await this.projectId(), text, source, ...(sceneId ? { sceneId } : {}) });
+    return this.writer(null);
   }
-  async refreshStyleSheet(): Promise<StyleProfile> {
-    const p = await this.style();
-    if (!p.samples.length) return p;
-    const sheet = await roles.styleSheet(providerFor('editor', this.ai), p.samples.slice(-5).map((s) => s.text));
-    const next = { ...p, sheet, updatedAt: new Date().toISOString() };
-    await this.saveStyle(next);
+  /** The author rewrote an AI draft: keep both sides, the difference is what teaches. */
+  async recordEdit(draft: string, final: string, sceneId?: string): Promise<WriterState> {
+    await this.writerStore.append({ type: 'edit.recorded', projectId: await this.projectId(), draft, final, ...(sceneId ? { sceneId } : {}) });
+    return this.writer(null);
+  }
+  async refreshStyleSheet(): Promise<WriterState> {
+    const w = await this.writer(null);
+    if (!w.samples.length) return w;
+    const own = w.samples.filter((s) => s.source === 'author-sample');
+    const pick = [...own.slice(-3), ...w.samples.filter((s) => s.source === 'author-edit').slice(-2)].slice(-5);
+    const sheet = await roles.styleSheet(providerFor('editor', this.ai), pick.map((s) => s.text));
+    await this.writerStore.append({ type: 'sheet.distilled', projectId: await this.projectId(), text: sheet });
+    return this.writer(null);
+  }
+  /** Propose rules from the edits since the last pass. Proposals only: the author confirms or rejects. */
+  async learnFromEdits(): Promise<{ proposed: WriterRule[]; state: WriterState }> {
+    const w = await this.writer(null);
+    const fresh = w.edits.slice(-Math.max(w.unlearnedEdits, 1)).slice(-6);
+    if (!fresh.length) return { proposed: [], state: w };
+    const learned = await roles.learnRules(providerFor('editor', this.ai), fresh, w.rules);
+    const projectId = await this.projectId();
+    const rejected = new Set(w.rules.filter((r) => r.status === 'rejected').map((r) => r.id));
+    for (const r of learned) {
+      const ruleId = ruleIdOf(r.text);
+      if (!rejected.has(ruleId)) await this.writerStore.append({ type: 'rule.proposed', projectId, ruleId, text: r.text, origin: 'edits', evidence: r.evidence });
+    }
+    await this.writerStore.append({ type: 'learn.ran', projectId, edits: fresh.length });
+    const state = await this.writer(null);
+    const ids = new Set(learned.map((r) => ruleIdOf(r.text)).filter((id) => !rejected.has(id)));
+    return { proposed: state.rules.filter((r) => ids.has(r.id)), state };
+  }
+  /** "This is me" / "not me" on a rule, or a rule the author writes themselves (confirmed at once). */
+  async ruleVerdict(ruleId: string, verdict: 'confirm' | 'reject'): Promise<WriterState> {
+    const w = await this.writer(null);
+    if (!w.rules.some((r) => r.id === ruleId)) throw new Error(`no rule ${ruleId}`);
+    await this.writerStore.append({ type: verdict === 'confirm' ? 'rule.confirmed' : 'rule.rejected', projectId: await this.projectId(), ruleId });
+    return this.writer(null);
+  }
+  async addRule(text: string): Promise<WriterState> {
+    const ruleId = ruleIdOf(text), projectId = await this.projectId();
+    await this.writerStore.append({ type: 'rule.proposed', projectId, ruleId, text, origin: 'author', evidence: '' });
+    await this.writerStore.append({ type: 'rule.confirmed', projectId, ruleId });
+    return this.writer(null);
+  }
+  /** Pin (or unpin with null) the voice this project drafts in to the writer as of a time. */
+  async pinWriter(asOf: string | null): Promise<Project> {
+    const { writerAsOf: _, ...rest } = (await this.bible()).project;
+    const next: Project = asOf ? { ...rest, writerAsOf: new Date(asOf).toISOString() } : rest;
+    await this.store.saveProject(next);
     return next;
+  }
+
+  /** Fold a pre-writer-soul style.json into the soul, once per project. The file is left in place. */
+  private async importLegacyStyle(): Promise<void> {
+    let legacy: StyleProfile;
+    try { legacy = JSON.parse(await fs.readFile(path.join(this.store.dir, 'style.json'), 'utf8')) as StyleProfile; } catch { return; }
+    const projectId = await this.projectId();
+    const events = await this.writerStore.events();
+    if (events.some((e) => e.type === 'imported' && e.projectId === projectId)) return;
+    for (const s of legacy.samples ?? []) await this.writerStore.append({ type: 'sample.added', projectId, text: s.text, source: s.source, ...(s.sceneId ? { sceneId: s.sceneId } : {}) });
+    if (legacy.sheet) await this.writerStore.append({ type: 'sheet.distilled', projectId, text: legacy.sheet });
+    await this.writerStore.append({ type: 'imported', projectId, from: path.join(this.store.dir, 'style.json'), count: legacy.samples?.length ?? 0 });
   }
 
   // ---- structure ----
@@ -91,25 +162,34 @@ export class Studio {
     const states = await this.statesForScene(scene);
     const prev = bible.scenes.filter((s) => s.order < scene.order).sort((a, b) => b.order - a.order)[0];
     const facts = bible.facts.filter((f) => f.order < scene.order).slice(-60);
-    const text = await roles.draft(providerFor('drafter', this.ai), { bible, scene, states, facts, previousSummary: prev?.summary ?? '', style: await this.style(), ...(decisions ? { decisions } : {}) });
+    const writer = await this.writer();
+    const text = await roles.draft(providerFor('drafter', this.ai), { bible, scene, states, facts, previousSummary: prev?.summary ?? '', style: writer, ...(decisions ? { decisions } : {}) });
     const version = await this.store.saveVersion(sceneId, text, 'ai');
     if (scene.status === 'card') await this.store.updateScene({ ...scene, status: 'drafted' });
-    return { version, findings: verifyScene(bible, scene, text), ...(decisions ? { decisions } : {}) };
+    return { version, findings: [...verifyScene(bible, scene, text), ...styleDrift(writer.stats, text)], ...(decisions ? { decisions } : {}) };
   }
 
-  /** The author's own text for a scene. If it edits an AI draft, the edit becomes a style sample. */
-  async saveAuthorText(sceneId: string, text: string): Promise<{ version: SceneVersion; findings: Finding[] }> {
+  /**
+   * The author's own text for a scene. If it rewrites an AI draft, the draft/final pair goes to the
+   * writer soul, and every few such edits a learning pass proposes rules (best effort: a model
+   * failure never loses the author's text).
+   */
+  async saveAuthorText(sceneId: string, text: string, opts: { autoLearn?: boolean } = {}): Promise<{ version: SceneVersion; findings: Finding[]; proposed?: WriterRule[] }> {
     const bible = await this.bible();
     const scene = mustScene(bible, sceneId);
     const prev = await this.store.latest(sceneId);
     const version = await this.store.saveVersion(sceneId, text, 'author');
-    if (prev?.source === 'ai' && text !== prev.text && text.length > 400) await this.addStyleSample(text, 'author-edit', sceneId);
     if (scene.status === 'card') await this.store.updateScene({ ...scene, status: 'drafted' });
-    return { version, findings: verifyScene(bible, scene, text) };
+    const findings = verifyScene(bible, scene, text);
+    if (!(prev?.source === 'ai' && text !== prev.text && text.length > 400)) return { version, findings };
+    const w = await this.recordEdit(prev.text, text, sceneId);
+    if (opts.autoLearn === false || w.unlearnedEdits < AUTO_LEARN_EVERY) return { version, findings };
+    try { return { version, findings, proposed: (await this.learnFromEdits()).proposed }; }
+    catch (e) { return { version, findings: [...findings, { level: 'warn', code: 'writer.learn', message: `could not learn from edits yet: ${(e as Error).message}` }] }; }
   }
 
   async editPassage(passage: string, note: string): Promise<string> {
-    return roles.edit(providerFor('editor', this.ai), passage, note, await this.style(), await this.bible());
+    return roles.edit(providerFor('editor', this.ai), passage, note, await this.writer(), await this.bible());
   }
 
   /**
@@ -307,9 +387,10 @@ export class Studio {
   async verifyAll(): Promise<Record<string, Finding[]>> {
     const bible = await this.bible();
     const out: Record<string, Finding[]> = { continuity: continuity(bible.facts), timeline: timeline(bible.scenes) };
+    const writer = await this.writer();
     for (const s of bible.scenes) {
       const v = await this.store.latest(s.id);
-      if (v) out[`scene:${s.order}`] = verifyScene(bible, s, v.text);
+      if (v) out[`scene:${s.order}`] = [...verifyScene(bible, s, v.text), ...(v.source === 'ai' ? styleDrift(writer.stats, v.text) : [])];
     }
     return out;
   }

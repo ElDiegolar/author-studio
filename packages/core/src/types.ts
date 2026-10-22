@@ -16,6 +16,10 @@ export interface Project {
   targetWords: number;
   voice: Voice;
   createdAt: string;
+  /** Writer soul this book is written by (a pen name is a separate writer). Default "default". */
+  writer?: string;
+  /** Pin the writer's voice as of this time (ISO), e.g. to keep a series in book one's voice. */
+  writerAsOf?: string;
 }
 
 export interface Premise {

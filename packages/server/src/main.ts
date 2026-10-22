@@ -56,6 +56,19 @@ app.post('/api/muse', async (c) => c.json(await studio.muse(await c.req.json()))
 app.get('/api/style', async (c) => c.json(await studio.style()));
 app.post('/api/style/sample', async (c) => { const { text } = await c.req.json(); return c.json(await studio.addStyleSample(text)); });
 app.post('/api/style/sheet', async (c) => c.json(await studio.refreshStyleSheet()));
+app.get('/api/writer', async (c) => c.json(await studio.writer(c.req.query('asOf') ?? undefined)));
+app.post('/api/writer/learn', async (c) => c.json(await studio.learnFromEdits()));
+app.post('/api/writer/rules', async (c) => { const { action, id, text } = await c.req.json();
+  if (action === 'add') return c.json(await studio.addRule(text));
+  if (action === 'confirm' || action === 'reject') return c.json(await studio.ruleVerdict(id, action));
+  return c.json({ error: 'bad action' }, 400); });
+app.post('/api/writer/souls', async (c) => { const { action, name } = await c.req.json();
+  if (action === 'save') return c.json({ path: await studio.writerStore.saveSoul(name ?? `snapshot-${Date.now()}`) });
+  if (action === 'list') return c.json(await studio.writerStore.listSouls());
+  if (action === 'restore') { await studio.writerStore.restoreSoul(name); return c.json({ ok: true }); }
+  if (action === 'reset') return c.json(await studio.writerStore.resetSoul());
+  return c.json({ error: 'bad action' }, 400); });
+app.put('/api/writer/pin', async (c) => { const { asOf } = await c.req.json(); return c.json(await studio.pinWriter(asOf ?? null)); });
 app.get('/api/verify', async (c) => c.json(await studio.verifyAll()));
 app.get('/api/export.md', async (c) => c.text(await studio.exportMarkdown()));
 

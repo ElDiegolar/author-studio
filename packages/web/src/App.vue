@@ -69,8 +69,12 @@ const scenario = ref(''); const museAsOf = ref<number | null>(null); const museA
 async function museIt() { const r = await run(museAgency.value.length ? 'characters deciding, then musing' : 'musing', () => api<{ ideas: typeof ideas.value; decisions: typeof museDecisions.value }>('/muse', 'POST', { scenario: scenario.value || undefined, asOf: museAsOf.value ?? undefined, agency: museAgency.value })); ideas.value = r?.ideas ?? []; museDecisions.value = r?.decisions ?? []; }
 
 // ---- style ----
-const style = ref<{ samples: unknown[]; stats: Record<string, unknown> | null; sheet: string } | null>(null); const sample = ref('');
-async function loadStyle() { style.value = await api('/style'); }
+type Rule = { id: string; text: string; status: 'proposed' | 'confirmed' | 'rejected'; seen: number; evidence: string[]; origin: string };
+const style = ref<{ writerId: string; asOf: string | null; samples: unknown[]; edits: unknown[]; unlearnedEdits: number; stats: Record<string, unknown> | null; sheet: string; rules: Rule[]; tendencies: { text: string }[] } | null>(null); const sample = ref(''); const ownRule = ref('');
+async function loadStyle() { style.value = await api('/writer'); }
+async function learn() { await run('learning from your edits', () => api('/writer/learn', 'POST')); await loadStyle(); }
+async function verdict(id: string, action: 'confirm' | 'reject') { await run('saving', () => api('/writer/rules', 'POST', { action, id })); await loadStyle(); }
+async function addOwnRule() { await run('saving', () => api('/writer/rules', 'POST', { action: 'add', text: ownRule.value })); ownRule.value = ''; await loadStyle(); }
 async function addSample() { await run('measuring', () => api('/style/sample', 'POST', { text: sample.value })); sample.value = ''; await loadStyle(); }
 async function sheet() { await run('distilling', () => api('/style/sheet', 'POST')); await loadStyle(); }
 
@@ -214,8 +218,20 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
 
   <!-- STYLE -->
   <div v-else-if="tab === 'style'" class="grid">
-    <div class="card"><h3>Teach the drafter your voice</h3><p class="muted">Paste your own prose. Every time you edit an AI draft and save it, that edit is added too.</p><textarea class="prose" v-model="sample" /><button class="act" :disabled="!sample" @click="addSample">Add sample</button><button class="ghost" @click="sheet">Distil style sheet</button></div>
-    <div class="card" v-if="style"><h3>Profile · {{ style.samples.length }} sample(s)</h3><pre style="white-space:pre-wrap;font:12px/1.4 monospace" class="muted">{{ JSON.stringify(style.stats, null, 1) }}</pre><h3>Style sheet</h3><p style="white-space:pre-wrap">{{ style.sheet || '(none yet)' }}</p></div>
+    <div class="card"><h3>Teach the drafter your voice</h3><p class="muted">Paste your own prose. Every time you rewrite an AI draft and save it, the draft and your version are both kept: the difference is what teaches.</p><textarea class="prose" v-model="sample" /><button class="act" :disabled="!sample" @click="addSample">Add sample</button><button class="ghost" @click="sheet">Distil style sheet</button>
+      <template v-if="style"><h3 style="margin-top:12px">Your habits when you rewrite AI drafts</h3><ul class="list"><li v-for="(t, k) in style.tendencies" :key="k">{{ t.text }}</li></ul><p v-if="!style.tendencies.length" class="muted">Measured once you have rewritten at least two AI drafts ({{ style.edits.length }} so far).</p>
+      <h3 style="margin-top:12px">Profile · {{ style.samples.length }} sample(s), {{ style.edits.length }} edit(s)</h3><pre style="white-space:pre-wrap;font:12px/1.4 monospace" class="muted">{{ JSON.stringify(style.stats, null, 1) }}</pre><h3>Style sheet</h3><p style="white-space:pre-wrap">{{ style.sheet || '(none yet)' }}</p></template></div>
+    <div class="card" v-if="style"><h3>Writer soul · {{ style.writerId }}<span v-if="style.asOf" class="muted"> as of {{ style.asOf.slice(0, 10) }}</span></h3>
+      <p class="muted">Rules learned from your edits. Say whether each one is you; confirmed rules go into every draft, rejected ones never come back.</p>
+      <button class="act" :disabled="!!busy || !style.edits.length" @click="learn">Learn from my edits<span v-if="style.unlearnedEdits"> ({{ style.unlearnedEdits }} new)</span></button>
+      <div v-for="r in style.rules" :key="r.id" class="idea" :style="r.status === 'rejected' ? 'opacity:.5' : ''">
+        <b>{{ r.text }}</b> <span class="muted">· {{ r.status }}<span v-if="r.status === 'proposed' && r.seen > 1">, seen {{ r.seen }}×</span><span v-if="r.origin === 'author'">, yours</span></span>
+        <br v-if="r.evidence.length" /><span v-if="r.evidence.length" class="muted">{{ r.evidence[r.evidence.length - 1] }}</span>
+        <div v-if="r.status === 'proposed'"><button class="ghost" @click="verdict(r.id, 'confirm')">This is me</button><button class="ghost" @click="verdict(r.id, 'reject')">Not me</button></div>
+      </div>
+      <p v-if="!style.rules.length" class="muted">No rules yet. They are proposed every few edits, or press Learn.</p>
+      <h3 style="margin-top:12px">A rule of your own</h3><div class="row"><input v-model="ownRule" placeholder="Never open a chapter with weather" /><button class="ghost" :disabled="!ownRule" @click="addOwnRule">Add</button></div>
+    </div>
   </div>
 
   <!-- VERIFY -->

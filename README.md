@@ -2,7 +2,7 @@
 
 AI-assisted novel development where the book is a database, the characters are souls, the AI proposes and the author disposes.
 
-Everything lives as plain JSON and Markdown in a project folder you own and can edit by hand:
+Everything lives as plain JSON and Markdown in a project folder you own and can edit by hand (your writer soul lives beside your projects, see below):
 
 ```
 my-novel/
@@ -20,7 +20,7 @@ my-novel/
 - **Agency, togglable per character**: ticked characters decide what they would do (from their psyche and horizon); the rest adhere to the drafter or the author. Used by the muse and by drafting.
 - **Muse**: ideas for writer's block grounded in the souls and an optional scenario.
 - **Drafting**: scene prose from the card, the souls as they stand, the continuity ledger and your style profile. Every AI edit is shown as a diff; you accept by saving.
-- **Style developed from the writer**: measured stats plus a distilled style sheet from your samples. Every time you edit an AI draft and save, the edit becomes a sample.
+- **The writer is a soul too**: your style lives in an append-only writer soul (`~/.config/author-studio/writers/<writer>/events.jsonl`, override with `AUTHOR_WRITER_HOME`) that follows you across projects. It holds your uploaded samples and, every time you rewrite an AI draft, the draft and your version side by side. From those pairs it measures your habits deterministically ("shortens sentences −40% over 5 edits", "cuts dialogue tags") and, every third edit, a model proposes rules with before → after evidence. You mark each one **This is me** or **Not me**: confirmed rules go into every draft, rejected ones never come back. Drafts are checked for style drift against your measured stats. The soul has a time horizon, so a series can pin book one's voice (`writerAsOf` in project.json), and snapshots let you keep a soul per pen name. A legacy `style.json` is folded in on open.
 - **Accept**: facts are extracted into a continuity ledger and each present character witnesses the scene (their soul grows).
 - **Verify**: deterministic checks, no model: length, banned words, POV, tense, absent characters acting, continuity contradictions, timeline.
 - **Proofread**, **export** to Markdown, **seed** original characters in the mould of a named reference.

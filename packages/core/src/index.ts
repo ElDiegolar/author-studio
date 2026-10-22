@@ -9,3 +9,7 @@ export * from './style/profile.js';
 export * from './verify/verifier.js';
 export { Studio } from './studio.js';
 export * from './agent.js';
+export * from './writer/events.js';
+export * from './writer/replay.js';
+export * from './writer/instructions.js';
+export { WriterStore, writerHome } from './writer/store.js';

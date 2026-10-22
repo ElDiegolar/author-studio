@@ -3,6 +3,7 @@
  */
 import type { Bible, Fact, Scene } from '../types.js';
 import type { CharacterState } from '../character/replay.js';
+import { measure, type StyleStats } from '../style/profile.js';
 
 export interface Finding { level: 'error' | 'warn'; code: string; message: string }
 
@@ -43,6 +44,25 @@ export function verifyScene(bible: Bible, scene: Scene, text: string): Finding[]
     const re = new RegExp(`\\b${escape(c.name.split(' ')[0] ?? c.name)}\\b\\s+(said|asked|replied|walked|turned|looked|stepped|grabbed|whispered|shouted)`, 'i');
     if (re.test(text)) out.push({ level: 'warn', code: 'scene.absent-acts', message: `${c.name} is not on the scene card but appears to act in the scene` });
   }
+  return out;
+}
+
+/**
+ * Style drift: does this text read like the writer? Compares measured stats against the writer
+ * soul's. Quiet until there are about 300 words of the author's own prose to compare against.
+ */
+export function styleDrift(writer: StyleStats | null, text: string): Finding[] {
+  if (!writer || writer.words < 300) return [];
+  const m = measure(text);
+  if (m.words < 150) return [];
+  const out: Finding[] = [];
+  const rel = (a: number, b: number) => (a - b) / Math.max(b, 0.5);
+  const sent = rel(m.avgSentenceLen, writer.avgSentenceLen);
+  if (Math.abs(sent) > 0.35) out.push({ level: 'warn', code: 'style.drift', message: `sentences average ${m.avgSentenceLen} words, ${Math.round(Math.abs(sent) * 100)}% ${sent > 0 ? 'longer' : 'shorter'} than yours (${writer.avgSentenceLen})` });
+  const para = rel(m.avgParagraphLen, writer.avgParagraphLen);
+  if (Math.abs(para) > 0.5) out.push({ level: 'warn', code: 'style.drift', message: `paragraphs average ${m.avgParagraphLen} words vs your ${writer.avgParagraphLen}` });
+  if (m.adverbRate - writer.adverbRate > 1 && m.adverbRate > writer.adverbRate * 1.5) out.push({ level: 'warn', code: 'style.drift', message: `${m.adverbRate} adverbs per 100 words vs your ${writer.adverbRate}` });
+  if (Math.abs(m.dialogueRatio - writer.dialogueRatio) > 0.3) out.push({ level: 'warn', code: 'style.drift', message: `${Math.round(m.dialogueRatio * 100)}% of paragraphs carry dialogue vs your ${Math.round(writer.dialogueRatio * 100)}%` });
   return out;
 }
 

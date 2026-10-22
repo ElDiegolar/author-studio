@@ -21,6 +21,12 @@
  *   author muse <dir> [--as-of N] [--cast id,id] [--scenario ..] [--count 6] [--agency all|id,id]   (named characters decide for themselves; the rest follow the author)
  *   author soul save|list|restore|reset <dir> <charId> [name]
  *   author style sample <dir> <file.md> | author style sheet <dir>
+ *   author writer show <dir> [--as-of ISO]           the writer soul: rules, habits from your edits, stats, sheet
+ *   author writer learn <dir>                         propose style rules from your recent edits of AI drafts
+ *   author writer confirm|reject <dir> <ruleId>       "this is me" / "not me"
+ *   author writer rule <dir> "Never open on weather"  a rule of your own (confirmed at once)
+ *   author writer save|list|restore|reset <dir> [name]   writer soul snapshots (e.g. one per pen name)
+ *   author writer pin <dir> <ISO|none>                keep this project in the voice you had then
  *   author proof <dir> <sceneId>
  *   author verify <dir>
  *   author export <dir> [--out book.md]
@@ -59,7 +65,7 @@ async function main(): Promise<void> {
     print(`initialised ${dir}`); return;
   }
 
-  const grouped = ['character', 'world', 'soul', 'style', 'scene'].includes(cmd);
+  const grouped = ['character', 'world', 'soul', 'style', 'writer', 'scene'].includes(cmd);
   const dir = grouped ? rest[0]! : sub!;
   const studio = await Studio.open(dir);
   const args = grouped ? rest.slice(1) : rest;
@@ -153,6 +159,20 @@ async function main(): Promise<void> {
     case 'style': {
       if (sub === 'sample') print((await studio.addStyleSample(await fs.readFile(args[0]!, 'utf8'))).stats);
       else if (sub === 'sheet') print((await studio.refreshStyleSheet()).sheet);
+      return;
+    }
+    case 'writer': {
+      const w = studio.writerStore;
+      if (sub === 'show') { const { v } = opts(args, { 'as-of': { type: 'string' } }); const st = await studio.writer(v['as-of'] as string | undefined); print({ writerId: st.writerId, asOf: st.asOf, rules: st.rules.map((r) => `${r.id} [${r.status}${r.status === 'proposed' ? ` x${r.seen}` : ''}] ${r.text}`), habits: st.tendencies.map((t) => t.text), samples: st.samples.length, edits: st.edits.length, unlearnedEdits: st.unlearnedEdits, stats: st.stats, sheet: st.sheet }); }
+      else if (sub === 'learn') print((await studio.learnFromEdits()).proposed.map((r) => `${r.id} ${r.text}  (${r.evidence.at(-1) ?? ''})`));
+      else if (sub === 'confirm' || sub === 'reject') print((await studio.ruleVerdict(args[0]!, sub)).rules.find((r) => r.id === args[0])!);
+      else if (sub === 'rule') print((await studio.addRule(args[0]!)).rules.at(-1)!);
+      else if (sub === 'save') print(await w.saveSoul(args[0] ?? `snapshot-${Date.now()}`));
+      else if (sub === 'list') print(await w.listSouls());
+      else if (sub === 'restore') { await w.restoreSoul(args[0]!); print('restored'); }
+      else if (sub === 'reset') print(await w.resetSoul());
+      else if (sub === 'pin') print(await studio.pinWriter(!args[0] || args[0] === 'none' ? null : args[0]));
+      else throw new Error(`unknown writer command: ${sub}`);
       return;
     }
     case 'proof': { print(await studio.proofread(args[0]!)); return; }

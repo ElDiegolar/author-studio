@@ -1,8 +1,6 @@
 /**
- * Writing style developed from the writer.
- * Two layers: measured statistics (deterministic, from the author's own prose) and a
- * style sheet the editor role distils from samples. Every author edit of an AI draft is
- * added as a sample, so the profile keeps converging on the writer, not on the model.
+ * Prose measurement shared by the writer soul (writer/) and the verifier.
+ * StyleProfile is the legacy per-project style.json; it is folded into the writer soul on open.
  */
 export interface StyleStats {
   words: number;
@@ -60,23 +58,4 @@ export function addSample(p: StyleProfile, sample: Omit<StyleSample, 'addedAt'>)
 }
 
 /** Render the profile as instructions for the drafter. Stats are turned into concrete targets. */
-export function styleInstructions(p: StyleProfile, voice: { pov: string; tense: string; tone: string; bannedWords: string[] }): string {
-  const lines = [
-    `Point of view: ${voice.pov}. Tense: ${voice.tense}. Tone: ${voice.tone}.`,
-  ];
-  if (voice.bannedWords.length) lines.push(`Never use these words: ${voice.bannedWords.join(', ')}.`);
-  if (p.stats) {
-    const s = p.stats;
-    lines.push(
-      `Match the author's measured habits: average sentence ${s.avgSentenceLen} words (vary, stdev about ${s.sentenceLenStdev}), ` +
-      `paragraphs about ${s.avgParagraphLen} words, roughly ${Math.round(s.dialogueRatio * 100)}% of paragraphs carry dialogue, ` +
-      `adverbs about ${s.adverbRate} per 100 words, about ${s.commaPerSentence} commas per sentence.`,
-    );
-  }
-  if (p.sheet) lines.push(`Style sheet distilled from the author's own writing:\n${p.sheet}`);
-  const ex = p.samples.slice(-3).map((s) => s.text.slice(0, 1200));
-  if (ex.length) lines.push(`Samples of the author's prose. Write like this, not like a generic novel:\n---\n${ex.join('\n---\n')}\n---`);
-  return lines.join('\n');
-}
-
 function round(n: number): number { return Math.round(n * 100) / 100; }

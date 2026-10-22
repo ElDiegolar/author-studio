@@ -53,7 +53,7 @@ server.tool('seed_character', 'Design an original character in the mould of a na
 server.tool('relate', 'Record a relationship on a character\'s soul (optionally the mutual one on the other)', { id: z.string(), otherId: z.string(), relation: z.string(), mutual: z.string().optional() }, async ({ id, otherId, relation, mutual }) => { await studio.relate(id, otherId, relation, mutual); return text('ok'); });
 server.tool('add_world_entry', 'Add a location, faction, rule, item or glossary entry', { kind: z.enum(['location', 'faction', 'rule', 'item', 'glossary']), name: z.string(), summary: z.string(), details: z.string().default(''), introducedAt: z.number().int().optional() }, async ({ introducedAt, ...e }) => text(await studio.store.addWorld(introducedAt !== undefined ? { ...e, introducedAt } : e)));
 server.tool('add_scene', 'Add a scene card', { title: z.string(), chapter: z.number().int(), pov: z.string(), characters: z.array(z.string()), goal: z.string(), conflict: z.string(), outcome: z.string(), location: z.string().default(''), time: z.string().default(''), targetWords: z.number().int().default(1500) }, async (s) => text(await studio.store.addScene({ ...s, summary: '' })));
-server.tool('save_scene_text', 'Save a new version of a scene\'s text. source=author trains the style profile when it edits an AI draft', { id: z.string(), text: z.string(), source: z.enum(['ai', 'author']).default('ai') }, async ({ id, text: t, source }) => {
+server.tool('save_scene_text', 'Save a new version of a scene\'s text. source=author teaches the writer soul when it rewrites an AI draft (every few edits it proposes style rules)', { id: z.string(), text: z.string(), source: z.enum(['ai', 'author']).default('ai') }, async ({ id, text: t, source }) => {
   if (source === 'author') return text(await studio.saveAuthorText(id, t));
   const v = await studio.store.saveVersion(id, t, 'ai'); return text({ version: v.version });
 });
@@ -71,6 +71,20 @@ server.tool('soul', 'save | list | restore | reset a character\'s soul (event lo
   if (action === 'restore') { await studio.store.restoreSoul(id, name ?? 'base'); return text('restored'); }
   return text(await studio.store.resetSoul(id));
 });
+server.tool('writer_soul', 'The writer soul (the author\'s style, shared across their projects): learned rules with ids and status, habits measured from their edits of AI drafts, stats, style sheet. as_of = ISO time for the voice they had then', { as_of: z.string().optional() }, async ({ as_of }) => { const w = await studio.writer(as_of); return text({ writerId: w.writerId, asOf: w.asOf, rules: w.rules, tendencies: w.tendencies.map((t) => t.text), stats: w.stats, sheet: w.sheet, samples: w.samples.length, edits: w.edits.length, unlearnedEdits: w.unlearnedEdits }); });
+server.tool('writer_learn', 'Propose style rules from the author\'s recent rewrites of AI drafts. Proposals only; the author confirms or rejects each', {}, async () => text((await studio.learnFromEdits()).proposed));
+server.tool('writer_rule', 'Record the author\'s verdict on a style rule ("this is me" = confirm, "not me" = reject) or add a rule they state. Only on the author\'s word', { action: z.enum(['confirm', 'reject', 'add']), id: z.string().optional(), text: z.string().optional() }, async ({ action, id, text: t }) => {
+  if (action === 'add') { if (!t) return text({ error: 'text is required' }); return text((await studio.addRule(t)).rules); }
+  if (!id) return text({ error: 'id is required' });
+  return text((await studio.ruleVerdict(id, action === 'confirm' ? 'confirm' : 'reject')).rules);
+});
+server.tool('writer_snapshot', 'save | list | restore | reset the writer soul (e.g. one per pen name). reset archives everything first', { action: z.enum(['save', 'list', 'restore', 'reset']), name: z.string().optional() }, async ({ action, name }) => {
+  if (action === 'save') return text(await studio.writerStore.saveSoul(name ?? `snapshot-${Date.now()}`));
+  if (action === 'list') return text(await studio.writerStore.listSouls());
+  if (action === 'restore') { await studio.writerStore.restoreSoul(name ?? 'base'); return text('restored'); }
+  return text(await studio.writerStore.resetSoul());
+});
+server.tool('writer_pin', 'Pin this project to the writer\'s voice as of a time (ISO), e.g. keep a series in book one\'s voice; omit as_of to unpin', { as_of: z.string().optional() }, async ({ as_of }) => text(await studio.pinWriter(as_of ?? null)));
 server.tool('add_fact', 'Assert a continuity fact by hand', { sceneId: z.string(), subject: z.string(), predicate: z.string(), object: z.string(), text: z.string() }, async (f) => {
   const b = await studio.bible(); const s = b.scenes.find((x) => x.id === f.sceneId); if (!s) return text({ error: 'no such scene' });
   return text(await studio.store.addFacts([{ ...f, order: s.order }]));
