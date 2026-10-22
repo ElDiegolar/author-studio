@@ -5,7 +5,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { FileStore } from './store/fileStore.js';
-import { providerFor, type AiConfig, defaultAiConfig } from './ai/index.js';
+import { AiOffError, providerFor, type AiConfig, defaultAiConfig } from './ai/index.js';
+import { aiEnabled } from './settings.js';
 import * as roles from './ai/roles.js';
 import { replay, psycheOf, type CharacterState } from './character/replay.js';
 import type { Bible, Character, Fact, Premise, Project, Scene, SceneVersion } from './types.js';
@@ -19,7 +20,7 @@ import { ruleIdOf } from './writer/events.js';
 const AUTO_LEARN_EVERY = 3;
 
 export class Studio {
-  constructor(readonly store: FileStore, readonly ai: AiConfig = defaultAiConfig(), readonly writerStore: WriterStore = WriterStore.forWriter('default')) {}
+  constructor(readonly store: FileStore, public ai: AiConfig = defaultAiConfig(), readonly writerStore: WriterStore = WriterStore.forWriter('default')) {}
 
   static async init(dir: string, project: Omit<Project, 'id' | 'createdAt'>, premise: Premise, opts: { ai?: AiConfig; writerStore?: WriterStore } = {}): Promise<Studio> {
     const store = await FileStore.init(dir, project, premise);
@@ -201,6 +202,13 @@ export class Studio {
     const scene = mustScene(bible, sceneId);
     const v = await this.store.latest(sceneId);
     if (!v) throw new Error('scene has no text to accept');
+    const summary = (n: number) => scene.summary || (n ? `${scene.goal} -> ${scene.outcome}` : scene.outcome);
+    // Manual mode: accepting still marks the scene final; the ledger and memories are the author's to fill.
+    if (!aiEnabled(this.ai)) {
+      await this.store.updateScene({ ...scene, status: 'accepted', summary: summary(0) });
+      const all = await this.bible();
+      return { facts: [], witnessed: [], findings: [{ level: 'warn', code: 'ai.off', message: 'Accepted without AI: no facts were extracted and no character witnessed it. Add facts by hand if you want continuity checks.' }, ...continuity(all.facts), ...timeline(all.scenes)] };
+    }
     const extractor = providerFor('extractor', this.ai);
     await this.store.removeFactsForScene(sceneId);
     const facts = await this.store.addFacts(await roles.extractFacts(extractor, scene, v.text));
@@ -213,8 +221,7 @@ export class Studio {
       await this.store.appendEvent({ type: 'scene.witnessed', characterId: id, order: scene.order, sceneId, summary: w.summary, learned: w.learned, feeling: w.feeling });
       witnessed.push(c.name);
     }
-    const summary = facts.length ? `${scene.goal} -> ${scene.outcome}` : scene.outcome;
-    await this.store.updateScene({ ...scene, status: 'accepted', summary: scene.summary || summary });
+    await this.store.updateScene({ ...scene, status: 'accepted', summary: summary(facts.length) });
     const all = await this.bible();
     return { facts, witnessed, findings: [...continuity(all.facts), ...timeline(all.scenes)] };
   }
@@ -379,7 +386,8 @@ export class Studio {
     const deterministic: roles.ProofIssue[] = [];
     for (const m of v.text.matchAll(/\b(\w+)\s+\1\b/gi)) deterministic.push({ original: m[0], fix: m[1]!, reason: 'repeated word' });
     for (const m of v.text.matchAll(/[.!?]{2,}(?!\.)|,,|\s,/g)) deterministic.push({ original: m[0], fix: m[0][0]!, reason: 'doubled punctuation' });
-    const ai = await roles.proofread(providerFor('extractor', this.ai), v.text);
+    let ai: roles.ProofIssue[] = [];
+    try { ai = await roles.proofread(providerFor('extractor', this.ai), v.text); } catch (e) { if (!(e instanceof AiOffError)) throw e; }
     return [...deterministic, ...ai.filter((i) => !deterministic.some((d) => d.original === i.original))];
   }
 

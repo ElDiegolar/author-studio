@@ -2,7 +2,7 @@ import { z } from 'zod/v4';
 import type { Bible, Character, Fact, Scene } from '../types.js';
 import type { CharacterState } from '../character/replay.js';
 import type { Provider } from './provider.js';
-import { ACTOR_SYSTEM, ARCHITECT_SYSTEM, BUILDER_SYSTEM, DRAFTER_SYSTEM, EDITOR_SYSTEM, EXTRACTOR_SYSTEM, LEARN_RULES_SYSTEM, DECIDE_SYSTEM, MIRROR_SYSTEM, MUSE_SYSTEM, PROOFREADER_SYSTEM, SEED_SYSTEM, STYLE_SHEET_SYSTEM, WITNESS_SYSTEM, bibleBrief, characterStateBrief, sceneCard } from '../prompts/index.js';
+import { ACTOR_SYSTEM, ARCHITECT_SYSTEM, BUILDER_SYSTEM, DRAFTER_SYSTEM, EDITOR_SYSTEM, EXTRACTOR_SYSTEM, IMPORT_BOOK_SYSTEM, IMPORT_CARD_SYSTEM, IMPORT_CAST_SYSTEM, LEARN_RULES_SYSTEM, DECIDE_SYSTEM, MIRROR_SYSTEM, MUSE_SYSTEM, PROOFREADER_SYSTEM, SEED_SYSTEM, STYLE_SHEET_SYSTEM, WITNESS_SYSTEM, bibleBrief, characterStateBrief, sceneCard } from '../prompts/index.js';
 import { styleInstructions, type StyleView } from '../writer/instructions.js';
 import type { WriterEdit, WriterRule } from '../writer/replay.js';
 
@@ -263,4 +263,36 @@ export async function builderTurn(p: Provider, bible: Bible, current: { sheet: C
   const ctx = current ? `CHARACTER SO FAR\n${characterStateBrief(current.sheet, current.state)}` : 'No character yet. Start from what the author says.';
   const system = `${BUILDER_SYSTEM}\n\nTHE NOVEL\n${bibleBrief(bible)}\n\n${ctx}`;
   return p.structured({ system, messages: [...history, { role: 'user', content: message }], effort: 'medium', maxTokens: 3000 }, BuilderTurnSchema, 'turn');
+}
+
+// ---- import ----
+export const ImportCardSchema = z.object({
+  title: z.string(), pov: z.string().describe('name of the point-of-view character, or "" if unclear'),
+  characters: z.array(z.string()).describe('names present, from the cast list'), location: z.string(), time: z.string(),
+  goal: z.string(), conflict: z.string(), outcome: z.string(), summary: z.string(),
+}).describe('{"title":"...","pov":"Mara Voss","characters":["Mara Voss"],"location":"...","time":"...","goal":"...","conflict":"...","outcome":"...","summary":"..."}');
+export type ImportCard = z.infer<typeof ImportCardSchema>;
+
+export async function importCard(p: Provider, text: string, cast: string[]): Promise<ImportCard> {
+  return p.structured({ system: IMPORT_CARD_SYSTEM, messages: [{ role: 'user', content: `CAST: ${cast.join(', ') || '(none given)'}\n\nSCENE:\n${text.slice(0, 24000)}` }], effort: 'low', maxTokens: 1500 }, ImportCardSchema, 'scene_card');
+}
+
+export const ImportCastSchema = z.object({
+  role: z.string(), summary: z.string(), want: z.string(), need: z.string(), wound: z.string(), arc: z.string(),
+  voiceSample: z.string(), secrets: z.array(z.string()), traits: z.array(z.object({ key: z.string(), value: z.string() })),
+}).describe('{"role":"...","summary":"...","want":"...","need":"...","wound":"...","arc":"...","voiceSample":"...","secrets":[],"traits":[{"key":"habit","value":"..."}]}');
+export type ImportCast = z.infer<typeof ImportCastSchema>;
+
+export async function importCast(p: Provider, name: string, passages: string[]): Promise<ImportCast> {
+  return p.structured({ system: IMPORT_CAST_SYSTEM, messages: [{ role: 'user', content: `CHARACTER: ${name}\n\nPASSAGES:\n${passages.map((x, i) => `[${i + 1}] ${x}`).join('\n\n').slice(0, 20000)}` }], effort: 'medium', maxTokens: 2000 }, ImportCastSchema, 'character');
+}
+
+export const ImportBookSchema = z.object({
+  logline: z.string(), dramaticQuestion: z.string(), theme: z.string(), ending: z.string(),
+  world: z.array(z.object({ kind: z.string().describe('location | faction | item | rule | glossary'), name: z.string(), summary: z.string() })),
+}).describe('{"logline":"...","dramaticQuestion":"...","theme":"...","ending":"...","world":[{"kind":"location","name":"...","summary":"..."}]}');
+export type ImportBook = z.infer<typeof ImportBookSchema>;
+
+export async function importBook(p: Provider, opening: string, ending: string): Promise<ImportBook> {
+  return p.structured({ system: IMPORT_BOOK_SYSTEM, messages: [{ role: 'user', content: `OPENING:\n${opening.slice(0, 18000)}\n\nENDING:\n${ending.slice(0, 12000)}` }], effort: 'medium', maxTokens: 3000 }, ImportBookSchema, 'bible');
 }

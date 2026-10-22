@@ -104,3 +104,11 @@ export const BUILDER_SYSTEM = `You help a novelist create or edit a character by
 Ask one good question at a time when you need more; propose concrete material when you have enough. Draw on the novel's premise and existing cast so the character fits the book and creates friction with the others.
 Every turn, besides your reply, return the edits you are proposing to the character's sheet and soul as structured operations. Only propose edits the conversation supports. Mark ready=true when the character is complete enough to add to the cast.
 Edit ops: set(field: name|role|summary|want|need|wound|arc|voiceSample, value), secret(value), trait(key, value), relate(other: existing character id, relation).`;
+
+export const IMPORT_CARD_SYSTEM = `You read one scene of an existing novel manuscript and write its scene card for the author's story bible. Do not judge or rewrite the prose.
+Give a short title (2-5 words, no chapter numbers), the point-of-view character, who is present (only names from the cast list when they appear), where and when it happens, and in one line each: what the POV character wants in the scene (goal), what stands in the way (conflict), and how it ends (outcome). Then a two-sentence summary. Use only what the text says.`;
+
+export const IMPORT_CAST_SYSTEM = `You read passages from an existing novel in which one character appears and write that character's sheet for the author's story bible.
+Use only what the passages show or strongly imply; leave a field short rather than invent. The voice sample must be lines the character actually says in the passages, or empty if they never speak.`;
+
+export const IMPORT_BOOK_SYSTEM = `You read the opening and the ending of an existing novel and fill in its story bible: a one-sentence logline, the dramatic question, the theme in a phrase, how it ends, and the recurring places, organisations and important objects (world entries). Use only what the text shows.`;

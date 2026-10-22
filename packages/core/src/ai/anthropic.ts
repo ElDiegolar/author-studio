@@ -5,13 +5,13 @@ import type { CompleteRequest, CompleteResult, Provider } from './provider.js';
 
 /**
  * Claude provider. Default model claude-opus-5-5 with server-side refusal fallbacks on.
- * Credentials come from ANTHROPIC_API_KEY or an `ant auth login` profile.
+ * Credentials: the writer's key from Settings, else ANTHROPIC_API_KEY or an `ant auth login` profile.
  */
 export class AnthropicProvider implements Provider {
   readonly name: string;
   private client: Anthropic;
-  constructor(readonly model = 'claude-opus-5-5') {
-    this.client = new Anthropic();
+  constructor(readonly model = 'claude-opus-5-5', apiKey?: string) {
+    this.client = new Anthropic(apiKey ? { apiKey } : {});
     this.name = `anthropic:${model}`;
   }
 

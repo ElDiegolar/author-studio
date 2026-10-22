@@ -20,6 +20,10 @@ export interface Project {
   writer?: string;
   /** Pin the writer's voice as of this time (ISO), e.g. to keep a series in book one's voice. */
   writerAsOf?: string;
+  /** Chapter titles by chapter number; untitled chapters are "Chapter N". */
+  chapterTitles?: Record<string, string>;
+  /** Name on the title page of exports. */
+  author?: string;
 }
 
 export interface Premise {

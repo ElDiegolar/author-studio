@@ -21,9 +21,11 @@ import type { Provider } from './provider.js';
 
 export type Role = 'architect' | 'drafter' | 'actor' | 'extractor' | 'editor';
 
+export type ProviderKind = 'anthropic' | 'local' | 'claude-code' | 'none';
+
 export interface AiConfig {
-  /** Provider per role. 'anthropic' needs credentials; 'local' needs llama-server. */
-  roles: Record<Role, { provider: 'anthropic' | 'local' | 'claude-code'; model?: string }>;
+  /** Provider per role. 'anthropic' needs credentials; 'local' needs llama-server; 'none' is manual mode. */
+  roles: Record<Role, { provider: ProviderKind; model?: string; apiKey?: string }>;
   localUrl: string;
   localThinking: boolean;
 }
@@ -49,13 +51,24 @@ export function defaultAiConfig(): AiConfig {
   };
 }
 
+/** Thrown by every AI call in manual mode, so callers can degrade (e.g. accept without extraction). */
+export class AiOffError extends Error {
+  constructor() { super('AI is off. Turn it on in Settings, or do this part by hand.'); this.name = 'AiOffError'; }
+}
+class NoAiProvider implements Provider {
+  readonly name = 'none';
+  complete(): never { throw new AiOffError(); }
+  structured(): never { throw new AiOffError(); }
+}
+
 const cache = new Map<string, Provider>();
 export function providerFor(role: Role, cfg: AiConfig = defaultAiConfig()): Provider {
   const r = cfg.roles[role];
-  const key = `${r.provider}:${r.model ?? ''}`;
+  if (r.provider === 'none') return new NoAiProvider();
+  const key = `${r.provider}:${r.model ?? ''}:${r.provider === 'local' ? cfg.localUrl : ''}:${r.apiKey ? r.apiKey.slice(-8) : ''}`;
   let p = cache.get(key);
   if (!p) {
-    p = r.provider === 'anthropic' ? new AnthropicProvider(r.model) : r.provider === 'claude-code' ? new ClaudeCodeProvider(r.model) : new LocalProvider(cfg.localUrl, r.model, cfg.localThinking);
+    p = r.provider === 'anthropic' ? new AnthropicProvider(r.model, r.apiKey) : r.provider === 'claude-code' ? new ClaudeCodeProvider(r.model) : new LocalProvider(cfg.localUrl, r.model, cfg.localThinking);
     cache.set(key, p);
   }
   return p;
