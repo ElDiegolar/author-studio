@@ -1,0 +1,17 @@
+{
+  "name": "@author-studio/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Author Studio for Windows and macOS: the studio, local-first, in its own window.",
+  "scripts": {
+    "bundle": "node build.mjs",
+    "start": "node build.mjs && electron app",
+    "dist:win": "electron-builder --win --x64 --config electron-builder.yml",
+    "dist:mac": "electron-builder --mac --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2"
+  }
+}

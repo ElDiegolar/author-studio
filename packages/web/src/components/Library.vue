@@ -10,7 +10,7 @@ interface Preview { id: string; format: string; title: string; words: number; ch
 interface Job { status: 'previewed' | 'running' | 'done' | 'failed'; progress: { step: string; done: number; total: number } | null; error: string | null; dir: string | null; warnings: string[] }
 
 const props = defineProps<{ aiOn: boolean }>();
-const emit = defineEmits<{ (e: 'opened'): void }>();
+const emit = defineEmits<{ (e: 'opened'): void; (e: 'settings'): void }>();
 
 const lib = ref<{ dir: string; current: string | null; projects: Entry[] } | null>(null);
 const busy = ref(''); const error = ref('');
@@ -69,6 +69,10 @@ const ago = (iso: string) => { const d = (Date.now() - new Date(iso).getTime()) 
 
 <template>
   <div class="bento">
+    <div v-if="!aiOn" class="span-12 ai-off" role="note">
+      <span><b>Writing by hand.</b> Everything works without AI. Want help drafting, importing and talking to your characters? Add your Anthropic key, Claude Code or a local model.</span>
+      <button class="pill solid" @click="emit('settings')">Choose an AI</button>
+    </div>
     <Panel :span="7" eyebrow="On this machine" :title="lib ? `${lib.projects.length} novel${lib.projects.length === 1 ? '' : 's'}` : 'Your novels'">
       <p class="muted">Stored as plain files you own in <code>{{ lib?.dir }}</code>. Nothing is uploaded.</p>
       <ul class="list novels">
@@ -150,4 +154,6 @@ code { font: 12px var(--mono); color: var(--ink-2); }
 .progress { display: grid; gap: 8px; margin-top: 18px; }
 .track { height: 3px; border-radius: 3px; background: var(--hair-2); overflow: hidden; }
 .fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transform-origin: left; transition: transform 500ms var(--spring); }
+.ai-off { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 14px 16px 14px 20px; border-radius: 20px; background: var(--violet-wash); box-shadow: inset 0 0 0 1px var(--hair-2); font-size: 14px; color: var(--ink-2); }
+.ai-off b { color: var(--ink); font-weight: 560; }
 </style>

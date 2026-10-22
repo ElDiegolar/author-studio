@@ -16,7 +16,9 @@
     "mcp": "node packages/mcp/dist/main.js",
     "e2e": "npm run build && playwright test -c e2e/playwright.config.ts",
     "e2e:live": "npm run build && E2E_LIVE=1 playwright test -c e2e/playwright.config.ts",
-    "test:all": "npm test && npm run e2e"
+    "test:all": "npm test && npm run e2e",
+    "desktop:bundle": "npm run build && npm run bundle -w @author-studio/desktop",
+    "desktop:dev": "npm run desktop:bundle && npx electron packages/desktop/app"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

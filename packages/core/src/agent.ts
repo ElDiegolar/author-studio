@@ -5,10 +5,9 @@
  * Every write is versioned or snapshotted by the store, so anything it does can be undone.
  */
 import { z } from 'zod/v4';
-import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { nestedClaudeEnv } from './ai/claudeCode.js';
+import { spawnClaude } from './ai/claudeCode.js';
 import type { Studio } from './studio.js';
 import type { Provider } from './ai/provider.js';
 import { bibleBrief } from './prompts/index.js';
@@ -129,15 +128,18 @@ export function runNativeAgent(projectDir: string, model: string, history: { rol
   let mcpMain: string;
   try { mcpMain = require.resolve('@author-studio/mcp/dist/main.js'); }
   catch { mcpMain = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../mcp/dist/main.js'); }
-  const mcpConfig = JSON.stringify({ mcpServers: { author: { command: process.execPath, args: [mcpMain], env: { AUTHOR_PROJECT: projectDir, AUTHOR_PROVIDER: process.env.AUTHOR_PROVIDER ?? 'claude-code', AUTHOR_MODEL: process.env.AUTHOR_MODEL ?? model, AUTHOR_MODEL_CHEAP: process.env.AUTHOR_MODEL_CHEAP ?? 'claude-haiku-5-5' } } } });
+  if (process.env.AUTHOR_MCP_MAIN) mcpMain = process.env.AUTHOR_MCP_MAIN;
+  // Inside the desktop app process.execPath is the app itself; ELECTRON_RUN_AS_NODE makes it a plain node.
+  const pass = Object.fromEntries(['AUTHOR_SETTINGS', 'AUTHOR_WRITER_HOME', 'AUTHOR_LIBRARY'].filter((k) => process.env[k]).map((k) => [k, process.env[k]!]));
+  const mcpConfig = JSON.stringify({ mcpServers: { author: { command: process.execPath, args: [mcpMain], env: { ...pass, ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}), AUTHOR_PROJECT: projectDir, AUTHOR_PROVIDER: process.env.AUTHOR_PROVIDER ?? 'claude-code', AUTHOR_MODEL: process.env.AUTHOR_MODEL ?? model, AUTHOR_MODEL_CHEAP: process.env.AUTHOR_MODEL_CHEAP ?? 'claude-haiku-5-5' } } } });
   const prompt = history.length
     ? history.map((m) => (m.role === 'user' ? `AUTHOR:\n${m.content}` : `YOU (earlier):\n${m.content}`)).join('\n\n') + `\n\nAUTHOR:\n${message}`
     : message;
-  const args = ['-p', prompt, '--model', model, '--output-format', 'stream-json', '--verbose', '--tools', '', '--strict-mcp-config', '--mcp-config', mcpConfig, '--allowedTools', 'mcp__author__*', '--no-session-persistence', '--system-prompt', NATIVE_AGENT_SYSTEM];
+  const args = ['-p', '--model', model, '--output-format', 'stream-json', '--verbose', '--tools', '', '--strict-mcp-config', '--mcp-config', mcpConfig, '--allowedTools', 'mcp__author__*', '--no-session-persistence', '--system-prompt', NATIVE_AGENT_SYSTEM];
   const events: AgentEvent[] = [];
   const emit = (e: AgentEvent) => { events.push(e); onEvent?.(e); };
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { env: nestedClaudeEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawnClaude(bin, args, prompt);
     let buf = ''; let reply = ''; let stderr = '';
     child.stderr.on('data', (d) => { stderr += d; });
     child.stdout.on('data', (d) => {

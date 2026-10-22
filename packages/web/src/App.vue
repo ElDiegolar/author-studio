@@ -187,7 +187,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
       <p v-if="tab !== 'read'" class="lede">{{ meta.lede }}</p>
     </header>
 
-    <Library v-if="tab === 'library'" :ai-on="aiOn" @opened="opened" />
+    <Library v-if="tab === 'library'" :ai-on="aiOn" @opened="opened" @settings="go('settings')" />
     <Settings v-else-if="tab === 'settings'" @saved="(on: boolean) => (aiOn = on)" />
     <p v-else-if="!bible" class="empty">Opening the book…</p>
 

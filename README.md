@@ -27,6 +27,44 @@ my-novel/
 - **Soul save / restore / reset to base**: snapshots of a character's whole life; reset keeps the sheet and archives the rest.
 - **MCP server** so any agent can read and write the bible with the same guard rails.
 
+## Desktop app (Windows, macOS)
+
+Everything stays on the writer's machine:
+- **Novels:** `Documents\Author Studio`, one folder per novel.
+- **Settings, API key and writer soul:** the app's data folder (`%APPDATA%\Author Studio` on Windows).
+
+The studio runs inside the app on `127.0.0.1` with a random port, so it is never reachable from the network.
+
+```bash
+npm run desktop:bundle            # bundles server + MCP + web into packages/desktop/app (no node_modules)
+npm run desktop:dev               # run it in Electron from WSL/Linux/macOS
+# Windows installer (run on Windows, or from WSL via cmd.exe):
+cd packages/desktop && npm run dist:win     # -> release/AuthorStudio-Setup-<version>.exe (NSIS, per-user)
+cd packages/desktop && npm run dist:mac     # on a Mac -> release/AuthorStudio-<version>.dmg
+```
+
+The installer is unsigned for now, so Windows SmartScreen shows "Windows protected your PC". Click **More info**, then **Run anyway**. Signing it needs a code-signing certificate; with one, set `CSC_LINK` and `CSC_KEY_PASSWORD` before `dist:win`.
+
+**AI** is chosen in **Settings**:
+- your own Anthropic API key (stored only in the local settings file)
+- Claude Code, if it is installed (Windows: the native `claude.exe` or the npm shim)
+- a local OpenAI-compatible model
+- **No AI**: manual mode, where every AI action is hidden and the bible, souls, versions, reader, checks and export all still work
+
+**Import** (Library, then *Import a manuscript*):
+- Formats: Word, OpenDocument, RTF, Markdown, text, HTML, EPUB, PDF, Final Draft, and Scrivener (zip the `.scriv` folder).
+- Without AI, the book is split into chapters and scenes, and you tick the cast from names found in the text. You also get who appears where, a guessed POV, and the voice (POV and tense) measured from the prose.
+- With AI, it also writes the premise, world, character sheets and scene cards. Continuity (facts plus every character's memories) is optional.
+- Either way, the manuscript seeds your writer soul.
+
+**Read** shows the whole book page by page:
+- a two-page spread on wide screens, one page on phones
+- turn pages with the arrow keys, taps or swipes
+- contents, type size, paper/sepia/night, and your place is remembered
+- **Edit this scene** opens the scene you are reading
+
+**Export** the full work to Word, EPUB 3, PDF (6×9 with page numbers in the desktop app; via the print dialog in a browser), Markdown or plain text.
+
 ## Run
 
 ```bash

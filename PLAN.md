@@ -172,6 +172,26 @@ Built in one session: core (types, souls, horizon, mirror, decisions, style, ver
 CLI, MCP server, HTTP server, Vue web app. Verified end-to-end on the local 9B.
 See README.md.
 
+## 8b. Status (2026-10-22)
+Desktop app (Electron, Windows installer built; macOS from the same code), library of novels,
+settings with four AI modes including manual (no AI), import of ten formats, page-by-page reader,
+full-book export (Word, EPUB, PDF, Markdown, text), writer soul, Ethereal Glass UI, landing page
+(site/), 47 unit + 43 end-to-end tests.
+
+## 8c. iOS (planned, needs a Mac with Xcode and an Apple Developer account)
+- Shell: Capacitor around the same Vue web app (packages/web), so the iPad/iPhone UI is the one
+  already tested at phone width.
+- Core on device: the core is plain TypeScript except for node:fs and child processes. Add a
+  storage interface with two implementations (FileStore on node, Capacitor Filesystem in the app
+  Documents directory, so novels show in the Files app), and run Studio in the WebView instead of
+  behind HTTP (a thin adapter replaces api() calls with direct Studio calls).
+- AI on iOS: own Anthropic key (fetch from the device straight to Anthropic) or No AI. Claude Code
+  and local models are desktop-only.
+- Import/export: the parsers already avoid native code (fflate, mammoth, unpdf); file pickers via
+  Capacitor; export through the share sheet.
+- Sync between desktop and iOS (optional, later): the soulsociety encrypted sync, so the server
+  never sees the book.
+
 ## 9. Not in scope
 - Publishing/marketing. Cover art. Audiobook. Fan interaction with characters
   (that is a different product with different safety needs).

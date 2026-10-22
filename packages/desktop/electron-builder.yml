@@ -1,0 +1,33 @@
+appId: app.authorstudio.desktop
+productName: Author Studio
+copyright: Copyright © 2026 Author Studio
+directories:
+  app: app
+  output: release
+  buildResources: build
+asar: true
+# The MCP server is started by Claude Code as a separate process, so it must be a real file.
+asarUnpack:
+  - mcp.mjs
+files:
+  - "**/*"
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+  artifactName: AuthorStudio-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Author Studio
+  uninstallDisplayName: Author Studio
+  deleteAppDataOnUninstall: false
+mac:
+  target: [dmg]
+  category: public.app-category.productivity
+  icon: build/icon.png
+  artifactName: AuthorStudio-${version}.${ext}

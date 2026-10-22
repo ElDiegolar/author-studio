@@ -1,5 +1,6 @@
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, symlinkSync } from 'node:fs';
+import { spawn, type ChildProcessByStdio } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
+import type { Readable, Writable } from 'node:stream';
 import os from 'node:os';
 import path from 'node:path';
 import { z, type ZodType } from 'zod/v4';
@@ -15,7 +16,8 @@ export function isolatedClaudeConfigDir(): string {
   const source = path.join(process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'), '.credentials.json');
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    if (!existsSync(creds) && existsSync(source)) symlinkSync(source, creds);
+    // Windows needs admin rights for symlinks; a copy works (claude refreshes it like its own).
+    if (!existsSync(creds) && existsSync(source)) { try { symlinkSync(source, creds); } catch { copyFileSync(source, creds); } }
   } catch { /* best effort: claude will report auth problems itself */ }
   return dir;
 }
@@ -25,6 +27,33 @@ export function nestedClaudeEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_CONFIG_DIR: isolatedClaudeConfigDir() };
   for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_CODE_') || k === 'CLAUDECODE' || k === 'CLAUDE_PID') delete env[k];
   return env;
+}
+
+/**
+ * Where `claude` really is. On Windows a shell-less spawn cannot run the npm `claude.cmd` shim (and a
+ * shell would mangle prompts), so prefer the native claude.exe, else run the shim's cli.js with node.
+ */
+export function resolveClaude(bin: string): { command: string; prefix: string[] } {
+  if (process.platform !== 'win32' || /[\\/]/.test(bin)) return { command: bin, prefix: [] };
+  const dirs = (process.env.PATH ?? '').split(';').filter(Boolean);
+  const extra = [path.join(os.homedir(), '.local', 'bin'), path.join(process.env.APPDATA ?? '', 'npm')];
+  for (const d of [...dirs, ...extra]) { const exe = path.join(d, `${bin}.exe`); if (existsSync(exe)) return { command: exe, prefix: [] }; }
+  for (const d of [...dirs, ...extra]) {
+    const cmd = path.join(d, `${bin}.cmd`);
+    if (!existsSync(cmd)) continue;
+    const js = /"%~?dp0%?\\?([^"]+\.js)"/i.exec(readFileSync(cmd, 'utf8'))?.[1];
+    if (js) return { command: process.env.AUTHOR_NODE_BIN ?? 'node', prefix: [path.join(d, js.replace(/^\\/, ''))] };
+  }
+  return { command: `${bin}.exe`, prefix: [] };
+}
+
+/** Spawn claude with no shell; the prompt goes over stdin (no quoting issues, no command-line length limit). */
+export function spawnClaude(bin: string, args: string[], prompt: string): ChildProcessByStdio<Writable, Readable, Readable> {
+  const { command, prefix } = resolveClaude(bin);
+  const child = spawn(command, [...prefix, ...args], { env: nestedClaudeEnv(), stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  child.stdin.on('error', () => { /* claude exited early; its stderr says why */ });
+  child.stdin.end(prompt);
+  return child;
 }
 
 /**
@@ -59,10 +88,10 @@ export class ClaudeCodeProvider implements Provider {
       : req.messages.map((m) => (m.role === 'user' ? `AUTHOR:\n${m.content}` : `YOU (earlier):\n${m.content}`)).join('\n\n') + '\n\nRespond to the last AUTHOR message.';
     // --tools '' drops built-in tools; --strict-mcp-config with an empty config drops the user's MCP servers,
     // otherwise the nested claude sees (and tries to use) every server registered on this machine.
-    const args = ['-p', prompt, '--model', this.model, '--output-format', 'json', '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--no-session-persistence', '--system-prompt', req.system];
+    const args = ['-p', '--model', this.model, '--output-format', 'json', '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--no-session-persistence', '--system-prompt', req.system];
     if (jsonSchema) args.push('--json-schema', jsonSchema);
     return new Promise((resolve, reject) => {
-      const child = spawn(this.bin, args, { env: nestedClaudeEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawnClaude(this.bin, args, prompt);
       let stdout = ''; let stderr = '';
       child.stdout.on('data', (d) => { stdout += d; });
       child.stderr.on('data', (d) => { stderr += d; });
