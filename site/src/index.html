@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Author Studio — Local-First Novel Writing App for Windows</title>
+<meta name="description" content="A private desktop studio for novelists. Your book stays on your machine as files you own. Talk to characters who only know what they've lived. AI optional.">
+<link rel="canonical" href="{{SITE_URL}}/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#050505">
+<meta name="color-scheme" content="dark">
+<meta name="application-name" content="Author Studio">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Author Studio">
+<meta property="og:locale" content="en_US">
+<meta property="og:url" content="{{SITE_URL}}/">
+<meta property="og:title" content="Author Studio — Write the novel. Keep the soul.">
+<meta property="og:description" content="A local-first desktop studio for novelists. Characters with a knowledge horizon, a writer soul that learns your voice, and files you own. AI optional.">
+<meta property="og:image" content="{{SITE_URL}}/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Author Studio: Write the novel. Keep the soul. A local-first writing studio for novelists.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Author Studio — Write the novel. Keep the soul.">
+<meta name="twitter:description" content="A local-first desktop studio for novelists. Characters with a knowledge horizon, a writer soul that learns your voice, and files you own. AI optional.">
+<meta name="twitter:image" content="{{SITE_URL}}/og.png">
+<meta name="twitter:image:alt" content="Author Studio: Write the novel. Keep the soul. A local-first writing studio for novelists.">
+
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<link rel="preload" href="assets/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/styles.css">
+<script>document.documentElement.classList.add("js");</script>
+<script src="assets/site.js" defer></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "{{SITE_URL}}/#website",
+      "url": "{{SITE_URL}}/",
+      "name": "Author Studio",
+      "description": "A local-first desktop studio for novelists.",
+      "inLanguage": "en"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "{{SITE_URL}}/#app",
+      "name": "Author Studio",
+      "url": "{{SITE_URL}}/",
+      "description": "A local-first desktop app for novelists. The book is stored as plain files on your machine; characters are souls with a knowledge horizon; a writer soul learns your style. AI is optional: your own Anthropic API key, Claude Code, a local model, or none.",
+      "applicationCategory": "DesignApplication",
+      "operatingSystem": "Windows 10, Windows 11",
+      "downloadUrl": "{{DOWNLOAD_WINDOWS_ABS}}",
+      "image": "{{SITE_URL}}/og.png",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Story bible: premise, voice, world entries, cast, scene cards, versioned manuscript, continuity ledger",
+        "Character souls with a knowledge horizon and a deterministic leak detector",
+        "Psychological mirror and per-character agency",
+        "Drafting from scene cards in your voice, every AI edit shown as a diff",
+        "Writer soul that learns your style and proposes rules you confirm",
+        "Muse for writer's block",
+        "Proofreading, line editing and deterministic continuity, timeline, POV and tense checks",
+        "Manuscript import from Word, Markdown, text, RTF, OpenDocument, EPUB, HTML, PDF, Final Draft and Scrivener",
+        "Page-by-page book reader",
+        "Full-book export to Word, EPUB, PDF, Markdown and plain text",
+        "Studio agent and MCP server"
+      ]
+    },
+    {{FAQ_JSONLD}}
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="mesh" aria-hidden="true"></div>
+
+<div class="page">
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="logo" href="#top" aria-label="Author Studio, back to top">
+      <svg viewBox="0 0 32 32" width="24" height="24" aria-hidden="true" focusable="false"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#lg)"/><path d="M10 23 16 8l6 15M12.4 17.5h7.2" fill="none" stroke="#07070a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Author Studio
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#privacy">Privacy</a></li>
+      <li><a href="#download">Download</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+    <a class="btn-primary" href="#download">Download<span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></span></a>
+  </nav>
+</header>
+
+<main id="main" tabindex="-1">
+
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow">Local-first writing studio</span>
+      <h1 id="hero-title">Write the novel. <br>Keep the <span class="grad">soul.</span></h1>
+      <p class="hero-sub">Author Studio is a private desktop studio for novelists. Your book lives on your machine as plain files you own, and your characters become souls who only know what they have lived, so you can talk to them at any scene without spoiling your own plot.</p>
+      <div class="hero-cta">
+        <a class="btn-primary" href="{{DOWNLOAD_WINDOWS}}" data-download="windows">Download for Windows<span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></a>
+        <span class="btn-ghost" aria-disabled="true">macOS — coming soon</span>
+      </div>
+      <p class="hero-note">Windows 10/11, 64-bit. AI is optional. Nothing is uploaded.</p>
+    </div>
+
+    <div class="mock bezel reveal" role="img" aria-label="Author Studio window: a scene editor for chapter 7, scene 3, next to a chat with the character Mara. Her knowledge horizon is set to that scene, so she answers only from what she has lived, and the leak check reports no leaks.">
+      <div class="core">
+        <div class="mock-bar"><i></i><i></i><i></i><span>The Salt Archive — Ch. 7 · Scene 3</span></div>
+        <div class="mock-body">
+          <div class="mock-editor">
+            <div class="mock-label">Scene card</div>
+            <div class="mock-title">Mara opens the letter</div>
+            <p class="prose">The seal had been broken and pressed shut again, badly, the way a child hides a stolen sweet. Mara held it to the window until the wax showed its seam.</p>
+            <p class="prose">Whoever had read it first had wanted her to know.<span class="caret"></span></p>
+          </div>
+          <div class="mock-chat">
+            <span class="chip">Mara · as of Ch. 7, Sc. 3</span>
+            <div class="bubble me">Who wrote the letter?</div>
+            <div class="bubble char"><b>Mara</b>I don't know yet. Someone in this house read it before I did, and that frightens me more than the words.</div>
+            <span class="chip ok">No leaks past her horizon</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="features" aria-labelledby="features-title">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow">Features</span>
+      <h2 id="features-title">Your book, as a living <span class="grad">story bible.</span></h2>
+      <p>Premise, voice, world, cast, scene cards, a versioned manuscript and a continuity ledger, all connected. Every tool reads from it, and nothing changes without your say.</p>
+    </div>
+
+    <ul class="bento">
+      <li class="big reveal">
+        <article class="card bezel" aria-labelledby="f-souls">
+          <div class="core">
+            <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></div>
+            <h3 id="f-souls">Characters are souls with a knowledge horizon</h3>
+            <p>Talk to any character as of any scene. They answer only from what they have lived up to that point. A deterministic leak detector flags any answer that mentions something they cannot know yet, so a chat never spoils your own plot.</p>
+            <div class="horizon" aria-hidden="true">
+              <div class="timeline"><span class="lived">Ch. 1</span><span class="lived">Ch. 3</span><span class="lived">Ch. 5</span><span class="now">Ch. 7</span><span>Ch. 9</span><span>Ch. 12</span></div>
+              <div class="leak"><span><strong>Leak flagged:</strong> “the fire at the archive” happens in Ch. 9, after Mara’s horizon.</span></div>
+            </div>
+          </div>
+        </article>
+      </li>
+      <li class="reveal">
+        <article class="card bezel" aria-labelledby="f-mirror">
+          <div class="core">
+            <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 0-7 7c0 3 2 5 2 8h10c0-3 2-5 2-8a7 7 0 0 0-7-7z"/><path d="M9 21h6"/></svg></div>
+            <h3 id="f-mirror">A psychological mirror for each character</h3>
+            <p>See what drives a character, what they fear and where they contradict themselves, drawn from what is on the page.</p>
+          </div>
+        </article>
+      </li>
+      <li class="reveal">
+        <article class="card bezel" aria-labelledby="f-agency">
+          <div class="core">
+            <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12M18 9v12M6 15a6 6 0 0 0 6 6h6M18 9a6 6 0 0 0-6-6H6"/></svg></div>
+            <h3 id="f-agency">Characters can decide for themselves</h3>
+            <p>Turn on agency per character and let them choose what to do next. Their choices stay scratch until you keep them.</p>
+          </div>
+        </article>
+      </li>
+      <li class="reveal">
+        <article class="card bezel" aria-labelledby="f-draft">
+          <div class="core">
+            <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13 7l4 4"/></svg></div>
+            <h3 id="f-draft">Drafts in your voice, edits as diffs</h3>
+            <p>Draft from scene cards in your own voice. Every AI edit is shown as a diff, and nothing lands until you accept it.</p>
+          </div>
+        </article>
+      </li>
+      <li class="reveal">
+        <article class="card bezel" aria-labelledby="f-muse">
+          <div class="core">
+            <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg></div>
+            <h3 id="f-muse">A muse for writer’s block</h3>
+            <p>Stuck? Ask for ideas grounded in your characters’ souls: what each of them would want, fear or try next.</p>
+          </div>
+        </article>
+      </li>
+      <li class="reveal">
+        <article class="card bezel" aria-labelledby="f-verify">
+          <div class="core">
+            <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg></div>
+            <h3 id="f-verify">Proofread, line edit, verify</h3>
+            <p>Proofreading and line editing, plus deterministic checks for continuity contradictions, timeline, POV, tense and length. Read the whole book page by page, then export it to Word, EPUB, PDF, Markdown or plain text.</p>
+          </div>
+        </article>
+      </li>
+      <li class="wide reveal">
+        <article class="card bezel" aria-labelledby="f-import">
+          <div class="core">
+            <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/></svg></div>
+            <h3 id="f-import">Bring the manuscript you already have</h3>
+            <p>Import Word, Markdown, plain text, RTF, OpenDocument, EPUB, HTML, PDF, Final Draft or Scrivener. Author Studio splits it into chapters and scenes and, with AI on, builds the characters, world and scene cards for you.</p>
+          </div>
+        </article>
+      </li>
+      <li class="reveal">
+        <article class="card bezel" aria-labelledby="f-agent">
+          <div class="core">
+            <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4V5z"/></svg></div>
+            <h3 id="f-agent">A studio agent, and an MCP server</h3>
+            <p>Do everything by chatting with the studio agent. An MCP server lets other AI agents work with your book too.</p>
+          </div>
+        </article>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section class="section" id="privacy" aria-labelledby="privacy-title">
+  <div class="wrap split">
+    <div>
+      <div class="section-head reveal">
+        <span class="eyebrow">Local-first</span>
+        <h2 id="privacy-title">Your book never leaves your <span class="grad">machine.</span></h2>
+        <p>Author Studio is a desktop app, not a website. Your manuscript, notes and characters are saved as ordinary files in your Documents folder. Nothing is uploaded.</p>
+      </div>
+      <ul class="points">
+        <li class="bezel reveal"><div class="core"><h3>Files you own</h3><p>Plain JSON and Markdown in Documents\Author Studio. Back them up, sync them, or open them in any editor.</p></div></li>
+        <li class="bezel reveal"><div class="core"><h3>Works offline</h3><p>Use a local model for fully offline AI, or turn AI off and write by hand.</p></div></li>
+        <li class="bezel reveal"><div class="core"><h3>Bring your own AI</h3><p>Use your own Anthropic API key or Claude Code if you have it. Requests go straight from your machine to the provider you chose.</p></div></li>
+        <li class="bezel reveal"><div class="core"><h3>No training on your words</h3><p>Author Studio never uploads your writing and never trains a model on it.</p></div></li>
+      </ul>
+    </div>
+    <div class="files bezel reveal">
+      <div class="core">
+        <ul class="tree">
+          <li class="dir">Documents\Author Studio\</li>
+          <li><ul>
+            <li class="dir">the-salt-archive\</li>
+            <li><ul>
+              <li>project.json</li>
+              <li>premise.json</li>
+              <li>characters.json <span class="tag">// souls</span></li>
+              <li>world.json</li>
+              <li>scenes.json</li>
+              <li>facts.json <span class="tag">// continuity</span></li>
+              <li>style.json <span class="tag">// your voice</span></li>
+              <li>manuscript … .md</li>
+            </ul></li>
+          </ul></li>
+        </ul>
+        <p class="note">An example book folder. Everything is readable without Author Studio.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="writer-soul" aria-labelledby="soul-title">
+  <div class="wrap split reverse">
+    <div class="reveal">
+      <div class="section-head flush">
+        <span class="eyebrow">Writer soul</span>
+        <h2 id="soul-title">It learns your voice. You decide what <span class="grad">counts.</span></h2>
+        <p>The writer soul studies your own prose and every AI draft you rewrite. It proposes style rules with before-and-after evidence, and you mark each one “This is me” or “Not me”.</p>
+      </div>
+      <ul class="checks">
+        <li><span><strong>Habits measured from your edits,</strong> not guessed from a questionnaire.</span></li>
+        <li><span><strong>Style-drift check</strong> tells you when a chapter stops sounding like you.</span></li>
+        <li><span><strong>Follows you across books,</strong> and a series can pin book one’s voice.</span></li>
+      </ul>
+    </div>
+    <figure class="rule bezel reveal" aria-labelledby="rule-cap">
+      <div class="core">
+        <div class="rule-head">
+          <span class="rule-title">Proposed style rule</span>
+          <span class="chip">Learned from your rewrites</span>
+        </div>
+        <p id="rule-cap" class="rule-text">Drop the dialogue tag once the speaker is clear.</p>
+        <div class="ba">
+          <div><span class="mock-label">Before · AI draft</span><p class="prose">“You read it,” Mara said <del>accusingly</del>. “I didn’t,” <del>Ilse replied quietly.</del></p></div>
+          <div class="after"><span class="mock-label">After · your rewrite</span><p class="prose">“You read it,” Mara said. “I didn’t.” Ilse would not look at the seal.</p></div>
+        </div>
+        <div class="verdict" role="group" aria-label="Is this rule your style?">
+          <button type="button" class="yes" aria-pressed="false">This is me</button>
+          <button type="button" class="no" aria-pressed="false">Not me</button>
+        </div>
+        <p class="small-muted">Illustration. You confirm or reject every rule.</p>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<section class="section" id="how-it-works" aria-labelledby="how-title">
+  <div class="wrap">
+    <div class="section-head center reveal">
+      <span class="eyebrow">How it works</span>
+      <h2 id="how-title">From first page to <span class="grad">final check.</span></h2>
+    </div>
+    <ol class="steps">
+      <li class="bezel reveal"><div class="core"><span class="num" aria-hidden="true"></span><h3>Import or start fresh</h3><p>Bring an existing manuscript or begin with a premise and a voice.</p></div></li>
+      <li class="bezel reveal"><div class="core"><span class="num" aria-hidden="true"></span><h3>Build cast and world</h3><p>Characters, places, rules and scene cards, all in one story bible.</p></div></li>
+      <li class="bezel reveal"><div class="core"><span class="num" aria-hidden="true"></span><h3>Draft or write</h3><p>Write by hand, or draft from scene cards and accept edits as diffs.</p></div></li>
+      <li class="bezel reveal"><div class="core"><span class="num" aria-hidden="true"></span><h3>Talk to your characters</h3><p>Interview anyone as of any scene, inside their knowledge horizon.</p></div></li>
+      <li class="bezel reveal"><div class="core"><span class="num" aria-hidden="true"></span><h3>Read, verify, export</h3><p>Read it through page by page, check continuity, timeline, POV and tense, then export to Word, EPUB, PDF or Markdown.</p></div></li>
+    </ol>
+  </div>
+</section>
+
+<section class="section" id="download" aria-labelledby="download-title">
+  <div class="wrap">
+    <div class="section-head center reveal">
+      <span class="eyebrow">Download</span>
+      <h2 id="download-title">Start writing <span class="grad">today.</span></h2>
+      <p>Author Studio runs on Windows now. macOS is built from the same code and is on the way.</p>
+    </div>
+    <ul class="dl">
+      <li class="reveal">
+        <article class="bezel" aria-labelledby="dl-win">
+          <div class="core">
+            <h3 id="dl-win">Windows</h3>
+            <p>Windows 10/11, 64-bit</p>
+            <div class="spacer"></div>
+            <a class="btn-primary" href="{{DOWNLOAD_WINDOWS}}" data-download="windows">Free download for Windows<span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg></span></a>
+          </div>
+        </article>
+      </li>
+      <li class="soon reveal">
+        <article class="bezel" aria-labelledby="dl-mac">
+          <div class="core">
+            <h3 id="dl-mac">macOS</h3>
+            <p>Built from the same code as the Windows app.</p>
+            <div class="spacer"></div>
+            <span class="btn-ghost" aria-disabled="true">Coming soon</span>
+          </div>
+        </article>
+      </li>
+      <li class="soon reveal">
+        <article class="bezel" aria-labelledby="dl-ios">
+          <div class="core">
+            <h3 id="dl-ios">iOS</h3>
+            <p>For iPhone and iPad.</p>
+            <div class="spacer"></div>
+            <span class="btn-ghost" aria-disabled="true">Coming soon</span>
+          </div>
+        </article>
+      </li>
+    </ul>
+    <p class="dl-note"><span data-release>Version and checksums are listed on the release.</span></p>
+  </div>
+</section>
+
+<section class="section" id="faq" aria-labelledby="faq-title">
+  <div class="wrap">
+    <div class="section-head center reveal">
+      <span class="eyebrow">FAQ</span>
+      <h2 id="faq-title">Honest <span class="grad">answers.</span></h2>
+    </div>
+    <div class="faq reveal">
+      <details class="faq-item">
+        <summary>Is my writing uploaded anywhere?</summary>
+        <div class="faq-a"><p>No. Your book is stored on your own computer as plain JSON and Markdown files in Documents\Author Studio. Nothing is uploaded, and no model is trained on your writing. If you choose a cloud AI provider, only the requests you make are sent to that provider, using your own key.</p></div>
+      </details>
+      <details class="faq-item">
+        <summary>Do I need AI to use Author Studio?</summary>
+        <div class="faq-a"><p>No. AI is optional. You can write by hand and still use the story bible, scene cards, versioned manuscript, deterministic checks for continuity, timeline, POV and tense, the page-by-page reader, and export to Word, EPUB, PDF and Markdown.</p></div>
+      </details>
+      <details class="faq-item">
+        <summary>Which AI can I use?</summary>
+        <div class="faq-a"><p>Your own Anthropic API key, Claude Code if it is installed on your computer, or a local model that runs fully offline. You can also turn AI off entirely.</p></div>
+      </details>
+      <details class="faq-item">
+        <summary>What files can I import?</summary>
+        <div class="faq-a"><p>Word, Markdown, plain text, RTF, OpenDocument, EPUB, HTML, PDF, Final Draft and Scrivener. Your manuscript is split into chapters and scenes, and when AI is on, characters, world entries and scene cards are built automatically.</p></div>
+      </details>
+      <details class="faq-item">
+        <summary>Does it work offline?</summary>
+        <div class="faq-a"><p>Yes. Writing and the deterministic checks work without a connection, and with a local model the AI features run fully offline too.</p></div>
+      </details>
+      <details class="faq-item">
+        <summary>Will it write my book for me?</summary>
+        <div class="faq-a"><p>No. It proposes and you decide. Every AI edit is shown as a diff that you accept or reject, character decisions stay scratch until you keep them, and style rules only count once you mark them as yours.</p></div>
+      </details>
+      <details class="faq-item">
+        <summary>Which platforms are supported?</summary>
+        <div class="faq-a"><p>Windows 10 and 11 (64-bit) today. A macOS version built from the same code is coming soon, and an iOS version is planned.</p></div>
+      </details>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap foot">
+    <a class="logo" href="#top" aria-label="Author Studio, back to top">
+      <svg viewBox="0 0 32 32" width="24" height="24" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="9" fill="url(#lg)"/><path d="M10 23 16 8l6 15M12.4 17.5h7.2" fill="none" stroke="#07070a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Author Studio
+    </a>
+    <nav aria-label="Footer">
+      <ul>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#privacy">Privacy</a></li>
+        <li><a href="#writer-soul">Writer soul</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#download">Download</a></li>
+        <li><a href="#faq">FAQ</a></li>
+      </ul>
+    </nav>
+    <p>Local-first writing for novelists. Your book stays yours.</p>
+  </div>
+</footer>
+</div>
+</body>
+</html>

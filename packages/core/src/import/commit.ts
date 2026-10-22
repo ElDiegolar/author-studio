@@ -85,7 +85,10 @@ export async function importIntoLibrary(
         const c = await roles.importCard(providerFor('extractor', ai), s.text, cast.map((x) => x.name));
         const ids = c.characters.map((n) => byName(n)?.id).filter((x): x is string => Boolean(x));
         card = { ...card, ...c, pov: byName(c.pov)?.id ?? card.pov, characters: [...new Set([...ids, ...present])] };
-        if (c.location && !places.has(c.location.toLowerCase())) { places.add(c.location.toLowerCase()); await studio.store.addWorld({ kind: 'location', name: c.location, summary: '', details: '' }); }
+        // Only short, new place names become world entries; "the shed, by the desk" is a description of a known place.
+        const loc = c.location.trim().replace(/^the\s+/i, '');
+        const known = [...places].some((p) => loc.toLowerCase().includes(p.replace(/^the\s+/, '')) || p.includes(loc.toLowerCase()));
+        if (loc && !known && loc.split(/\s+/).length <= 4 && !/[,;]/.test(loc)) { places.add(loc.toLowerCase()); await studio.store.addWorld({ kind: 'location', name: c.location.trim(), summary: '', details: '' }); }
       } catch (e) { warnings.push(`${s.title}: ${(e as Error).message}`); }
     }
     const scene = await studio.store.addScene({ title: card.title, chapter: s.chapter, pov: card.pov, characters: card.characters, goal: card.goal, conflict: card.conflict, outcome: card.outcome, location: card.location, time: card.time, targetWords: Math.max(300, Math.round(s.words / 100) * 100), summary: card.summary });

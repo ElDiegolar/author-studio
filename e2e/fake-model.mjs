@@ -67,6 +67,16 @@ export function answer(system, messages) {
     edits: [{ op: 'set', field: 'name', value: 'Tobin Rake' }, { op: 'set', field: 'role', value: 'harbour pilot' }, { op: 'trait', key: 'habit', value: 'whistles when lying' }],
     ready: true,
   });
+  if (system.startsWith('You read one scene of an existing novel')) {
+    const cast = (/CAST: (.*)/.exec(user)?.[1] ?? '').split(', ').filter((n) => n && n !== '(none given)');
+    const present = cast.filter((n) => user.includes(n.split(' ')[0]));
+    return json({ title: /customs/i.test(user) ? 'The Customs Shed' : 'At the Pier', pov: present[0] ?? '', characters: present, location: /customs/i.test(user) ? 'Customs shed' : 'The pier', time: 'dawn', goal: 'find out what the manifest hides', conflict: 'her brother wants it signed unread', outcome: 'she keeps a copy', summary: 'Mara checks the manifest. Jonah pushes back.' });
+  }
+  if (system.startsWith('You read passages from an existing novel')) {
+    const name = /CHARACTER: (.*)/.exec(user)?.[1] ?? 'Someone';
+    return json({ role: name.startsWith('Mara') ? 'protagonist' : 'supporting', summary: `${name} as the passages show them.`, want: 'the truth on paper', need: 'to trust someone', wound: 'an old disgrace', arc: 'from records to people', voiceSample: '', secrets: [], traits: [{ key: 'habit', value: 'counts things' }] });
+  }
+  if (system.startsWith('You read the opening and the ending of an existing novel')) return json({ logline: 'A customs clerk finds her brother in the manifest.', dramaticQuestion: 'Will she sign?', theme: 'records and truth', ending: 'She publishes the ledger.', world: [{ kind: 'location', name: 'Greyhaven', summary: 'the harbour town' }, { kind: 'item', name: 'The Albatross', summary: 'a trawler' }] });
   if (system.startsWith('You are a story architect')) {
     const cs = ids(user);
     return json({ scenes: [{ chapter: 3, title: 'The Pilot\'s Debt', pov: cs[0] ?? 'c_x', location: 'the quay', time: 'dawn', goal: 'collect the debt', conflict: 'Jonah got there first', outcome: 'Mara learns the price', characters: cs.slice(0, 2), targetWords: 900 }] });

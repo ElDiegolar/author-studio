@@ -1,0 +1,14 @@
+{
+  "name": "Author Studio",
+  "short_name": "Author Studio",
+  "description": "A local-first desktop studio for novelists.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "browser",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

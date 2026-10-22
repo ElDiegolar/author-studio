@@ -4,9 +4,14 @@ import { diffWords } from 'diff';
 import { api, type Bible, type Character, type Finding, type Scene, type Version } from './api';
 import Panel from './components/Panel.vue';
 import Cta from './components/Cta.vue';
+import Reader from './components/Reader.vue';
+import Library from './components/Library.vue';
+import Settings from './components/Settings.vue';
+import ExportMenu from './components/ExportMenu.vue';
 
-type Tab = 'studio' | 'bible' | 'scenes' | 'room' | 'muse' | 'style' | 'verify';
-const tab = ref<Tab>('studio');
+type Tab = 'studio' | 'bible' | 'scenes' | 'read' | 'room' | 'muse' | 'style' | 'verify';
+type View = Tab | 'library' | 'settings';
+const tab = ref<View>('studio');
 const menu = ref(false);
 /** Dark glass by default; the choice is remembered per browser. */
 const theme = ref<'dark' | 'light'>((() => { try { return localStorage.getItem('author-theme') === 'light' ? 'light' : 'dark'; } catch { return 'dark'; } })());
@@ -17,27 +22,44 @@ const TABS: { id: Tab; label: string; eyebrow: string; title: string; lede: stri
   { id: 'studio', label: 'Studio', eyebrow: 'Studio', title: '', lede: 'Say what you want done. The agent reads and writes the book; every other room is the same book by hand.' },
   { id: 'bible', label: 'Bible', eyebrow: 'The book as a database', title: 'The <em>bible</em>', lede: 'Premise, world and cast. Characters are souls: what you write here is where their lives begin.' },
   { id: 'scenes', label: 'Scenes', eyebrow: 'Drafting', title: 'Scene by <em>scene</em>', lede: 'The AI proposes, you dispose. Rewrite a draft and save it: the difference teaches your writer soul.' },
+  { id: 'read', label: 'Read', eyebrow: 'Reader', title: 'Read it <em>through</em>', lede: 'Your book the way a reader will meet it, page by page. Export the whole work when it is ready.' },
   { id: 'room', label: 'Characters', eyebrow: 'Character room', title: 'Talk to <em>them</em>', lede: 'Slide the horizon to meet a character as they were at any scene. They know only what they have lived.' },
   { id: 'muse', label: 'Muse', eyebrow: "Writer's block", title: 'Throw me <em>ideas</em>', lede: 'Pressure points found in the souls. Let some characters decide for themselves; nothing here is saved.' },
   { id: 'style', label: 'Style', eyebrow: 'Writer soul', title: 'Your <em>voice</em>', lede: 'Learned from your own prose and from every AI draft you rewrite. Tell it what is you and what is not.' },
   { id: 'verify', label: 'Verify', eyebrow: 'Deterministic checks', title: 'Who is <em>right</em>', lede: 'No model decides here: continuity, timeline, point of view, length, and whether a draft still sounds like you.' },
 ];
-const meta = computed(() => TABS.find((t) => t.id === tab.value)!);
-function go(t: Tab) { menu.value = false; tab.value = t; if (t === 'style') loadStyle(); if (t === 'verify') verify(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+const PLACES: Record<'library' | 'settings', { eyebrow: string; title: string; lede: string }> = {
+  library: { eyebrow: 'Library', title: 'Your <em>novels</em>', lede: 'Everything lives on this machine as files you own. Open a novel, start a new one, or import a manuscript you already have.' },
+  settings: { eyebrow: 'Settings', title: 'Your <em>studio</em>', lede: 'Choose how the studio uses AI, or switch it off and write everything yourself. These choices stay on this machine.' },
+};
+const meta = computed(() => (tab.value === 'library' || tab.value === 'settings' ? PLACES[tab.value] : TABS.find((t) => t.id === tab.value)!));
+/** Rooms of the open novel; the AI-only rooms are hidden in manual mode. */
+const rooms = computed(() => TABS.filter((t) => aiOn.value || !['studio', 'muse'].includes(t.id)));
+function go(t: View) { menu.value = false; tab.value = t; if (t === 'style') loadStyle(); if (t === 'verify') verify(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+const aiOn = ref(true);
+async function opened() { await load(); go(aiOn.value ? 'studio' : 'scenes'); }
+function editScene(id: string) { go('scenes'); void openScene(id); }
 const initials = (name: string) => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 function ask(q: string, def: string): string | undefined { return window.prompt(q, def) ?? undefined; }
-function openExport() { window.open('/api/export.md', '_blank'); }
 const SUGGEST = ['Set the premise: …', 'Add a character like a burnt-out harbour pilot', 'Outline three chapters', 'Draft scene 2 and let Mara decide for herself', 'What does Jonah know as of scene 3?', "I'm stuck on the breakfast scene", 'Export the book'];
 const aHistory = ref<{ role: 'user' | 'assistant'; content: string; events?: { kind: string; text: string }[] }[]>([]); const aMsg = ref('');
 async function agentSend() { const m = aMsg.value; aMsg.value = ''; aHistory.value.push({ role: 'user', content: m }); const r = await run('agent working', () => api<{ reply: string; events: { kind: string; text: string }[] }>('/agent', 'POST', { history: aHistory.value.slice(0, -1).map(({ role, content }) => ({ role, content })), message: m })); if (r) { aHistory.value.push({ role: 'assistant', content: r.reply, events: r.events.filter((e) => e.kind === 'action') }); await load(); } }
 const bible = ref<Bible | null>(null);
 const busy = ref(''); const error = ref('');
-async function load() { bible.value = await api<Bible>('/bible'); }
+async function load() { try { bible.value = await api<Bible>('/bible'); } catch { bible.value = null; tab.value = 'library'; } }
+/** Start: settings decide which AI controls exist; with no novel open, the library comes first. */
+async function boot() {
+  try { aiOn.value = (await api<{ aiOn: boolean }>('/settings')).aiOn; } catch { /* older server */ }
+  const lib = await api<{ current: string | null }>('/library').catch(() => ({ current: 'legacy' }));
+  if (!lib.current) { tab.value = 'library'; return; }
+  await load();
+  if (!aiOn.value && (tab.value === 'studio' || tab.value === 'muse')) tab.value = 'scenes';
+}
 async function run<T>(label: string, fn: () => Promise<T>): Promise<T | undefined> {
   busy.value = label; error.value = '';
   try { return await fn(); } catch (e) { error.value = (e as Error).message; return undefined; } finally { busy.value = ''; }
 }
-onMounted(load);
+onMounted(boot);
 const byId = (id: string) => bible.value?.characters.find((c) => c.id === id)?.name ?? id;
 
 // ---- bible ----
@@ -139,28 +161,41 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
   <div class="mesh" aria-hidden="true" />
 
   <nav class="island" :class="{ open: menu }" aria-label="Rooms">
-    <span class="brand">{{ bible?.project.title ?? 'Author Studio' }}</span>
-    <div class="links"><button v-for="t in TABS" :key="t.id" :class="{ on: tab === t.id }" @click="go(t.id)">{{ t.label }}</button></div>
+    <button class="brand" title="Library" @click="go('library')">{{ bible && tab !== 'library' ? bible.project.title : 'Author Studio' }}</button>
+    <div v-if="bible" class="links"><button v-for="t in rooms" :key="t.id" :class="{ on: tab === t.id }" @click="go(t.id)">{{ t.label }}</button></div>
     <span v-if="busy" class="pulse"><i />{{ busy }}</span>
     <button class="theme" :aria-label="theme === 'dark' ? 'Light mode' : 'Dark mode'" :title="theme === 'dark' ? 'Light mode' : 'Dark mode'" @click="toggleTheme">
       <svg v-if="theme === 'dark'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1" /></svg>
       <svg v-else viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7Z" /></svg>
     </button>
+    <button class="theme" :class="{ on: tab === 'settings' }" aria-label="Settings" title="Settings" @click="go('settings')">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M2.5 4.5h7M12.5 4.5h1M2.5 11.5h1M6.5 11.5h7" /><circle cx="11" cy="4.5" r="1.5" /><circle cx="5" cy="11.5" r="1.5" /></svg>
+    </button>
     <button class="burger" :aria-expanded="menu" aria-label="Menu" @click="menu = !menu"><i /><i /></button>
   </nav>
   <div v-if="menu" class="sheet">
-    <button v-for="(t, i) in TABS" :key="t.id" :class="{ on: tab === t.id }" :style="{ animationDelay: `${80 + i * 50}ms` }" @click="go(t.id)">{{ t.label }}</button>
+    <button v-for="(t, i) in (bible ? rooms : [])" :key="t.id" :class="{ on: tab === t.id }" :style="{ animationDelay: `${80 + i * 50}ms` }" @click="go(t.id)">{{ t.label }}</button>
+    <button :class="{ on: tab === 'library' }" :style="{ animationDelay: `${80 + rooms.length * 50}ms` }" @click="go('library')">Library</button>
+    <button :class="{ on: tab === 'settings' }" :style="{ animationDelay: `${130 + rooms.length * 50}ms` }" @click="go('settings')">Settings</button>
   </div>
 
   <main class="page">
-    <header :key="tab" v-reveal class="hero">
+    <header :key="tab" v-reveal class="hero" :class="{ compact: tab === 'read' }">
       <span class="eyebrow">{{ meta.eyebrow }}</span>
       <h1 v-if="meta.title" v-html="meta.title" />
       <h1 v-else>{{ bible?.project.title ?? 'Author Studio' }}</h1>
-      <p class="lede">{{ meta.lede }}</p>
+      <p v-if="tab !== 'read'" class="lede">{{ meta.lede }}</p>
     </header>
 
-    <p v-if="!bible" class="empty">Opening the book…</p>
+    <Library v-if="tab === 'library'" :ai-on="aiOn" @opened="opened" />
+    <Settings v-else-if="tab === 'settings'" @saved="(on: boolean) => (aiOn = on)" />
+    <p v-else-if="!bible" class="empty">Opening the book…</p>
+
+    <!-- READ: the whole book, page by page -->
+    <div v-else-if="tab === 'read'">
+      <div class="row" style="justify-content:flex-end;margin-bottom:14px"><span class="muted">Export the whole book</span><ExportMenu /></div>
+      <Reader :key="bible.project.title" :storage-key="bible.project.title" @edit="editScene" />
+    </div>
 
     <!-- STUDIO: everything is chat; the other rooms are the manual option -->
     <div v-else-if="tab === 'studio'" class="bento">
@@ -205,7 +240,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
           </li>
         </ul>
       </Panel>
-      <Panel :span="7" eyebrow="Build by talking" :title="bId ? `Editing ${byId(bId)}` : 'A new character'">
+      <Panel v-if="aiOn" :span="7" eyebrow="Build by talking" :title="bId ? `Editing ${byId(bId)}` : 'A new character'">
         <template #actions><button class="pill" @click="buildStart(null)">New</button><select style="width:auto;margin:0" @change="buildStart(($event.target as HTMLSelectElement).value || null)"><option value="">Edit existing…</option><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select></template>
         <div class="chat" style="min-height:200px;max-height:320px">
           <div v-for="(h, i) in bHistory" :key="i" class="bubble" :class="h.role === 'user' ? 'me' : 'them'">{{ h.content }}</div>
@@ -233,7 +268,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
         <label>Secrets</label><input v-model="newChar.secrets" placeholder="separated; by semicolons" />
         <div class="row" style="margin-top:8px"><button class="pill solid" :disabled="!newChar.name || !!busy" @click="addCharacter">{{ seedTraits ? 'Add this character' : 'Add character' }}</button><button v-if="seedTraits" class="pill" @click="discardSeed">Discard proposal</button></div>
       </Panel>
-      <Panel :span="6" eyebrow="From a reference" title="Seed a character">
+      <Panel v-if="aiOn" :span="6" eyebrow="From a reference" title="Seed a character">
         <input v-model="seedText" placeholder="A Deckard-type burnt-out investigator, or Miss Havisham" /><input v-model="seedNotes" placeholder="Notes (optional)" />
         <Cta :disabled="!seedText || !!busy" @click="seed">Propose</Cta>
         <template v-if="seedTraits">
@@ -247,7 +282,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
     <div v-else-if="tab === 'scenes'" class="bento">
       <div class="stack span-4">
         <Panel eyebrow="Outline" title="Scenes">
-          <template #actions><button class="pill" :disabled="!!busy" @click="outline">AI outline…</button></template>
+          <template #actions><button v-if="aiOn" class="pill" :disabled="!!busy" @click="outline">AI outline…</button></template>
           <template v-for="[ch, list] in chapters" :key="ch">
             <div class="chapter">Chapter {{ ch }}</div>
             <ul class="list"><li v-for="s in list" :key="s.id" :class="{ on: s.id === sceneId }" @click="openScene(s.id)"><b>{{ s.order }}. {{ s.title }}</b> <span class="status" :class="s.status">{{ s.status }}</span><br /><span class="muted">POV {{ byId(s.pov) }}</span></li></ul>
@@ -266,9 +301,12 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
         <Panel v-if="scene" :key="scene.id" :eyebrow="`Scene ${scene.order} · chapter ${scene.chapter} · ${versions.length} version(s)`" :title="scene.title">
           <p class="muted">{{ scene.goal }} → {{ scene.outcome }}</p>
           <div class="toolbar">
+            <template v-if="aiOn">
             <Cta :disabled="!!busy" @click="draft(false)">Draft with AI</Cta>
             <button class="pill" :disabled="!!busy || !draftAgency.length" title="The ticked characters decide first; the prose honours their choices" @click="draft(true)">Draft with agency</button>
             <label v-for="id in scene.characters" :key="id" class="check"><input v-model="draftAgency" type="checkbox" :value="id" /> {{ byId(id) }}</label>
+            </template>
+            <span v-else class="muted">Manual mode: write the scene yourself. Save keeps every version.</span>
           </div>
           <div class="prose-wrap"><textarea v-model="text" class="prose" placeholder="Write, or draft with AI and rewrite it in your voice." @mouseup="grabSelection" /></div>
           <div class="toolbar">
@@ -276,7 +314,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
             <button class="pill yes" :disabled="!!busy || !versions.length" @click="accept">Accept · facts &amp; witness</button>
             <button class="pill" :disabled="!!busy || !text" @click="proofread">Proofread</button>
           </div>
-          <div v-if="selection" class="composer"><span class="muted" style="padding-left:12px;white-space:nowrap">{{ selection.length }} chars</span><input v-model="editNote" placeholder="Note for the line editor" /><button class="pill" @click="editSel">Edit selection</button></div>
+          <div v-if="selection && aiOn" class="composer"><span class="muted" style="padding-left:12px;white-space:nowrap">{{ selection.length }} chars</span><input v-model="editNote" placeholder="Note for the line editor" /><button class="pill" @click="editSel">Edit selection</button></div>
         </Panel>
         <Panel v-else eyebrow="Nothing open"><p class="empty">Pick a scene from the outline, or add a card.</p></Panel>
         <Panel v-if="scene && findings.length" eyebrow="Findings">
@@ -302,7 +340,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
             <input type="range" :min="0" :max="maxOrder" :value="asOf ?? maxOrder" @input="asOf = Number(($event.target as HTMLInputElement).value); refreshState()" />
             <button class="pill" @click="asOf = null; refreshState()">Whole story</button>
           </Panel>
-          <Panel eyebrow="Mind">
+          <Panel v-if="aiOn" eyebrow="Mind">
             <button class="pill" :disabled="!!busy" @click="run('building mirror', () => api(`/characters/${roomId}/mirror`, 'POST')).then(refreshState)">Build psychological mirror</button>
             <label>A situation for them to decide on</label>
             <input v-model="situation" placeholder="Jonah offers her the ledger back" /><button class="pill solid" :disabled="!situation || !!busy" @click="decideIt">Let them decide</button>
@@ -320,7 +358,8 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
           </Panel>
         </template>
       </div>
-      <Panel v-if="roomId" :key="roomId" :span="8" :eyebrow="asOf === null ? 'As of the end' : `As of scene ${asOf}`" :title="`Talking to ${byId(roomId)}`">
+      <Panel v-if="roomId && !aiOn" :span="8" eyebrow="Manual mode" :title="byId(roomId)"><p class="empty">Talking to characters needs AI. Their soul, horizon and snapshots still work here; turn AI on in Settings to talk to them.</p></Panel>
+      <Panel v-else-if="roomId" :key="roomId" :span="8" :eyebrow="asOf === null ? 'As of the end' : `As of scene ${asOf}`" :title="`Talking to ${byId(roomId)}`">
         <div class="chat">
           <template v-for="(h, i) in history" :key="i">
             <div class="bubble" :class="h.role === 'user' ? 'me' : 'them'">{{ h.content }}</div>
@@ -358,7 +397,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
     <div v-else-if="tab === 'style'" class="bento">
       <template v-if="style">
         <Panel :span="7" :eyebrow="`Writer soul · ${style.writerId}${style.asOf ? ' · as of ' + style.asOf.slice(0, 10) : ''}`" title="Is this you?">
-          <template #actions><Cta :disabled="!!busy || !style.edits.length" @click="learn">Learn from my edits<template v-if="style.unlearnedEdits"> · {{ style.unlearnedEdits }} new</template></Cta></template>
+          <template v-if="aiOn" #actions><Cta :disabled="!!busy || !style.edits.length" @click="learn">Learn from my edits<template v-if="style.unlearnedEdits"> · {{ style.unlearnedEdits }} new</template></Cta></template>
           <p class="muted">Rules learned from your rewrites. Confirmed rules go into every draft; rejected ones never come back.</p>
           <div v-for="r in style.rules" :key="r.id" class="rule" :class="r.status">
             <div class="rule-text">{{ r.text }}</div>
@@ -379,7 +418,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
           </Panel>
           <Panel eyebrow="Teach it" title="Your own prose">
             <textarea v-model="sample" style="min-height:180px;font:400 16px/1.65 var(--prose)" placeholder="Paste a page you wrote." />
-            <div class="row"><button class="pill solid" :disabled="!sample" @click="addSample">Add sample</button><button class="pill" :disabled="!!busy" @click="sheet">Distil style sheet</button></div>
+            <div class="row"><button class="pill solid" :disabled="!sample" @click="addSample">Add sample</button><button v-if="aiOn" class="pill" :disabled="!!busy" @click="sheet">Distil style sheet</button></div>
           </Panel>
         </div>
         <Panel :span="7" eyebrow="Profile" :title="`${style.samples.length} samples · ${style.edits.length} edits`">
@@ -401,7 +440,7 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
     <!-- VERIFY -->
     <div v-else-if="tab === 'verify'" class="bento">
       <Panel :span="12" eyebrow="Summary">
-        <template #actions><button class="pill" :disabled="!!busy" @click="verify">Re-run</button><Cta @click="openExport">Export Markdown</Cta></template>
+        <template #actions><button class="pill" :disabled="!!busy" @click="verify">Re-run</button><ExportMenu /></template>
         <div class="stat-grid"><div v-for="c in reportCounts" :key="c.l" class="stat"><b>{{ c.n }}</b><span>{{ c.l }}</span></div></div>
       </Panel>
       <Panel v-for="(fs, key) in report ?? {}" :key="key" :span="fs.length > 2 ? 6 : 4" :eyebrow="String(key)">

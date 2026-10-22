@@ -21,6 +21,14 @@ export interface Parsed {
 export const IMPORT_EXTENSIONS = ['.docx', '.odt', '.rtf', '.md', '.markdown', '.txt', '.text', '.html', '.htm', '.xhtml', '.epub', '.pdf', '.fdx', '.zip', '.scrivx'] as const;
 
 export async function parseManuscript(fileName: string, data: Uint8Array): Promise<Parsed> {
+  const p = await parseByType(fileName, data);
+  // A top-level heading that opens the file, followed soon by another heading, is the book's title.
+  const [first] = p.blocks;
+  if (first?.kind === 'heading' && first.level === 1 && !CHAPTER.test(first.text) && p.blocks.slice(1, 5).some((b) => b.kind === 'heading') && !['epub', 'scrivener', 'final-draft'].includes(p.format)) p.title = first.text;
+  return p;
+}
+
+async function parseByType(fileName: string, data: Uint8Array): Promise<Parsed> {
   const ext = (fileName.match(/\.[a-z0-9]+$/i)?.[0] ?? '').toLowerCase();
   const base = fileName.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' ').trim();
   switch (ext) {

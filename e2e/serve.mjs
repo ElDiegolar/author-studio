@@ -34,13 +34,14 @@ await studio.store.addScene({ title: 'The Manifest', chapter: 1, pov: mara.id, c
 await studio.store.addScene({ title: 'Night at the Quay', chapter: 1, pov: mara.id, characters: [mara.id], goal: 'count the boats', conflict: 'one is missing', outcome: 'she suspects Jonah', location: 'the quay', time: 'night', targetWords: 150, summary: '' });
 await studio.store.addScene({ title: 'Greyhaven', chapter: 2, pov: mara.id, characters: [mara.id], goal: 'find the Albatross', conflict: 'nobody will talk', outcome: 'she finds the hull', location: 'Greyhaven', time: 'morning', targetWords: 150, summary: '' });
 
-const env = { ...process.env, AUTHOR_PROJECT: project, PORT: String(port), AUTHOR_WRITER_HOME: writerHome };
+const settings = path.join(tmp, 'settings.json');
+const env = { ...process.env, AUTHOR_PROJECT: project, PORT: String(port), AUTHOR_WRITER_HOME: writerHome, AUTHOR_SETTINGS: settings, AUTHOR_LIBRARY: tmp };
 let fake = null;
 if (!live) {
   fake = await startFakeModel();
   Object.assign(env, { AUTHOR_PROVIDER: 'local', AUTHOR_LOCAL_URL: fake.url, AUTHOR_LOCAL_MODEL: 'fake', AUTHOR_LOCAL_THINKING: '0' });
 }
-await fs.writeFile(path.join(root, 'e2e', '.run.json'), JSON.stringify({ tmp, project, writerHome, live, fakeUrl: fake?.url ?? null, base: `http://127.0.0.1:${port}`, ids: { mara: mara.id, jonah: jonah.id } }, null, 2));
+await fs.writeFile(path.join(root, 'e2e', '.run.json'), JSON.stringify({ tmp, project, writerHome, settings, live, fakeUrl: fake?.url ?? null, base: `http://127.0.0.1:${port}`, ids: { mara: mara.id, jonah: jonah.id } }, null, 2));
 
 const server = spawn(process.execPath, [path.join(root, 'packages/server/dist/main.js')], { env, stdio: 'inherit' });
 const stop = async () => { server.kill(); fake?.server.close(); await fs.rm(tmp, { recursive: true, force: true }); process.exit(0); };

@@ -36,15 +36,23 @@ export function structure(parsed: Parsed): ImportedChapter[] {
     push();
     paras = [];
   };
-  for (const b of parsed.blocks) {
+  const bookTitle = (parsed.title ?? '').trim().toLowerCase();
+  let seenText = false;
+  const blocks = parsed.blocks;
+  const lastHeading = blocks.reduce((at, b, i) => (b.kind === 'heading' ? i : at), -1);
+  for (const [i, b] of blocks.entries()) {
     if (b.kind === 'heading') {
-      // A level-1 heading right before a level-2 one (Part I / Chapter 1) is folded into the chapter title.
+      // Front matter (a byline, a dedication) before the first chapter is not a scene.
+      if (!ch && paras.length && i <= lastHeading && wc(paras.join(' ')) < 40) paras = [];
       flush();
+      // The book's own title at the top is not a chapter.
+      if (!seenText && !chapters.length && b.text.trim().toLowerCase() === bookTitle) continue;
+      // A level-1 heading right before a level-2 one (Part I / Chapter 1) is folded into the chapter title.
       if (ch && !ch.scenes.length && ch.title) { ch.title = `${ch.title}: ${b.text}`.replace(/^: |: $/g, ''); continue; }
       ch = { title: b.text, scenes: [] };
       chapters.push(ch);
     } else if (b.kind === 'break') flush();
-    else paras.push(b.text);
+    else { paras.push(b.text); seenText = true; }
   }
   flush();
   const kept = chapters.filter((c) => c.scenes.length);
@@ -71,7 +79,7 @@ const NOT_NAMES = new Set(('I The A An And But Or So Then When Where What Who Wh
   'On In At For From To With By Of As Later Though Although Because Since While Until Meanwhile Outside Inside Above Below Behind Beside Without Within Today Tonight Tomorrow Yesterday Morning Evening Night ' +
   'Monday Tuesday Wednesday Thursday Friday Saturday Sunday January February March April May June July August September October November December ' +
   'Chapter Part Book Prologue Epilogue One Two Three Four Five Six Seven Eight Nine Ten Nothing Everything Something Someone Everyone Nobody Somebody ' +
-  'Christmas Easter English French German Spanish Italian American British Mom Dad Mum Mother Father Okay OK Hey Hello Goodbye Please Thanks Thank Sorry Good Great All Every Each').split(' '));
+  'Do Did Does Let Go Come Look Wait Stop Listen Get Take Give Tell Ask Is Was Are Were Be Have Had Has Can Could Would Should Will My Me Him Them Us Christmas Easter English French German Spanish Italian American British Mom Dad Mum Mother Father Okay OK Hey Hello Goodbye Please Thanks Thank Sorry Good Great All Every Each').split(' '));
 const SAY = /^(?:said|asked|replied|whispered|shouted|muttered|murmured|called|answered|added|snapped|cried|told)\b/;
 
 /** Likely characters: capitalised words that are not sentence-initial and recur, boosted by dialogue tags. */
@@ -86,6 +94,9 @@ export function castCandidates(chapters: ImportedChapter[], limit = 16): CastCan
       const cut = words.reduce((at, w, i) => (NOT_NAMES.has(w) ? i + 1 : at), 0);
       if (cut) { words.splice(0, cut); lead = ' '; }
       if (!words.length) continue;
+      // Possessives belong to the name; other contractions (It's, I'll, You're) are not names.
+      words[words.length - 1] = words[words.length - 1]!.replace(/['’]s$/, '');
+      if (words.some((w) => /['’]/.test(w))) continue;
       const key = words.slice(0, 2).join(' ');
       const sentenceStart = lead === '' || /[.!?…]["”’]?\s+$|^["“‘]\s*$/.test(lead);
       if (sentenceStart) { initial.set(key, (initial.get(key) ?? 0) + 1); continue; }
@@ -103,7 +114,6 @@ export function castCandidates(chapters: ImportedChapter[], limit = 16): CastCan
       count.delete(first); dialogue.delete(first); initial.delete(first);
     }
   }
-  for (const [k, n] of initial) if (!count.has(k) && n >= 3 && !NOT_NAMES.has(k)) count.set(k, 0);
   return [...count.entries()]
     .map(([name, n]) => ({ name, count: n + (initial.get(name) ?? 0), dialogue: dialogue.get(name) ?? 0 }))
     .filter((c) => c.count >= 3)
