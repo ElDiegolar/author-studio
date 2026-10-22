@@ -89,11 +89,13 @@ Skill: `.claude/skills/high-end-visual-design` (taste-skill-classics), opt-in. I
 written for marketing sites; this is a tool people write in for hours, so each rule is
 kept, adapted or dropped deliberately.
 
-- Vibe: **Editorial Luxury**. Warm paper (`#FBF8F2`), espresso ink, a muted sage and a
-  burnt-sienna accent; dark mode is espresso, not black. Variable serif display
-  (Fraunces) for headings, Newsreader for prose, Geist for interface text. All three
-  self-hosted (fontsource), so the studio still works offline and nothing about the
-  author is sent to a font CDN. A fixed, pointer-events-none film grain at 3%.
+- Vibe: **Ethereal Glass** (changed from Editorial Luxury on 2026-10-22: the author asked
+  for something more modern). Near-black `#050505` with a fixed violet / emerald / blue
+  mesh glow, translucent glass cards with white hairlines, a violet-to-emerald gradient
+  for the primary action and accented title words. Geist (geometric grotesk, tight
+  tracking) for display and interface; Newsreader stays for prose, because a manuscript
+  reads better in a serif. Dark by default with a remembered light toggle in the nav.
+  Fonts self-hosted (fontsource): works offline, nothing sent to a font CDN.
 - Layout: **Editorial Split** for the writing surfaces (Studio, Scenes, Character room):
   a wide prose column, a narrow column of context (card, findings, mind, soul).
   **Asymmetrical Bento** for the dashboards (Bible, Style, Verify): cards of different

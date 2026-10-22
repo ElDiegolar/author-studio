@@ -8,6 +8,11 @@ import Cta from './components/Cta.vue';
 type Tab = 'studio' | 'bible' | 'scenes' | 'room' | 'muse' | 'style' | 'verify';
 const tab = ref<Tab>('studio');
 const menu = ref(false);
+/** Dark glass by default; the choice is remembered per browser. */
+const theme = ref<'dark' | 'light'>((() => { try { return localStorage.getItem('author-theme') === 'light' ? 'light' : 'dark'; } catch { return 'dark'; } })());
+function applyTheme() { document.documentElement.dataset.theme = theme.value; }
+function toggleTheme() { theme.value = theme.value === 'dark' ? 'light' : 'dark'; applyTheme(); try { localStorage.setItem('author-theme', theme.value); } catch { /* private window */ } }
+applyTheme();
 const TABS: { id: Tab; label: string; eyebrow: string; title: string; lede: string }[] = [
   { id: 'studio', label: 'Studio', eyebrow: 'Studio', title: '', lede: 'Say what you want done. The agent reads and writes the book; every other room is the same book by hand.' },
   { id: 'bible', label: 'Bible', eyebrow: 'The book as a database', title: 'The <em>bible</em>', lede: 'Premise, world and cast. Characters are souls: what you write here is where their lives begin.' },
@@ -118,12 +123,16 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
 </script>
 
 <template>
-  <div class="grain" aria-hidden="true" />
+  <div class="mesh" aria-hidden="true" />
 
   <nav class="island" :class="{ open: menu }" aria-label="Rooms">
     <span class="brand">{{ bible?.project.title ?? 'Author Studio' }}</span>
     <div class="links"><button v-for="t in TABS" :key="t.id" :class="{ on: tab === t.id }" @click="go(t.id)">{{ t.label }}</button></div>
     <span v-if="busy" class="pulse"><i />{{ busy }}</span>
+    <button class="theme" :aria-label="theme === 'dark' ? 'Light mode' : 'Dark mode'" :title="theme === 'dark' ? 'Light mode' : 'Dark mode'" @click="toggleTheme">
+      <svg v-if="theme === 'dark'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1" /></svg>
+      <svg v-else viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7Z" /></svg>
+    </button>
     <button class="burger" :aria-expanded="menu" aria-label="Menu" @click="menu = !menu"><i /><i /></button>
   </nav>
   <div v-if="menu" class="sheet">
