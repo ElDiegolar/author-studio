@@ -211,6 +211,7 @@ details summary { cursor: pointer; font: 500 12px/1 var(--ui); color: var(--mute
 }
 
 /* ---- phones and narrow windows ---- */
+.only-narrow { display: none; }
 @media (max-width: 1080px) {
   .links button { padding: 10px 10px; }
 }
@@ -225,6 +226,8 @@ details summary { cursor: pointer; font: 500 12px/1 var(--ui); color: var(--mute
   .bento { grid-template-columns: 1fr; gap: 16px; }
   .bento > * { grid-column: span 1; }
   .first-on-phone { order: -1; }
+  .only-wide { display: none; }
+  .only-narrow { display: inline; }
   .core { padding: 18px; }
   .field-row { grid-template-columns: 1fr; }
   .bubble { max-width: 92%; }

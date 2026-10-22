@@ -46,10 +46,23 @@ const bId = ref<string | null>(null); const bHistory = ref<{ role: 'user' | 'ass
 async function buildSend() { const m = bMsg.value; bMsg.value = ''; const r = await run('builder thinking', () => api<{ reply: string; edits: typeof bEdits.value; ready: boolean }>('/characters/build', 'POST', { id: bId.value, history: bHistory.value, message: m })); if (r) { bHistory.value.push({ role: 'user', content: m }, { role: 'assistant', content: r.reply }); bEdits.value.push(...r.edits); bReady.value = r.ready; } }
 async function buildApply() { const c = await run('writing soul', () => api<Character>('/characters/apply', 'POST', { id: bId.value, edits: bEdits.value })); if (c) { bId.value = c.id; bEdits.value = []; await load(); } }
 function buildStart(id: string | null) { bId.value = id; bHistory.value = []; bEdits.value = []; bReady.value = false; }
-const seedText = ref(''); const seedNotes = ref(''); const seedResult = ref<Record<string, unknown> | null>(null);
-async function addCharacter() { await run('adding', () => api('/characters', 'POST', { ...newChar.value, secrets: newChar.value.secrets.split(';').map((s) => s.trim()).filter(Boolean) })); newChar.value = { name: '', role: '', summary: '', want: '', need: '', wound: '', arc: '', voiceSample: '', secrets: '' }; await load(); }
-async function seed() { seedResult.value = (await run('seeding', () => api<Record<string, unknown>>('/characters/seed', 'POST', { inspiration: seedText.value, notes: seedNotes.value }))) ?? null; }
-async function keepSeed() { await run('adding', () => api('/characters/seed', 'POST', { inspiration: seedText.value, notes: seedNotes.value, add: true, seed: seedResult.value })); seedResult.value = null; await load(); }
+const seedText = ref(''); const seedNotes = ref(''); const seedTraits = ref<{ key: string; value: string }[] | null>(null);
+const blankChar = () => ({ name: '', role: '', summary: '', want: '', need: '', wound: '', arc: '', voiceSample: '', secrets: '' });
+/** Add what is in the sheet. A seeded proposal also carries its traits onto the soul. */
+async function addCharacter() {
+  const sheet = { ...newChar.value, secrets: newChar.value.secrets.split(';').map((s) => s.trim()).filter(Boolean) };
+  await run('adding', () => seedTraits.value ? api('/characters/seed', 'POST', { add: true, seed: { ...sheet, traits: seedTraits.value } }) : api('/characters', 'POST', sheet));
+  newChar.value = blankChar(); seedTraits.value = null; await load();
+}
+/** A proposal fills the sheet so the author edits it before anything is saved. */
+async function seed() {
+  const r = await run('seeding', () => api<{ name: string; role: string; summary: string; want: string; need: string; wound: string; arc: string; voiceSample: string; secrets: string[]; traits: { key: string; value: string }[] }>('/characters/seed', 'POST', { inspiration: seedText.value, notes: seedNotes.value }));
+  if (!r) return;
+  const { traits, secrets, ...rest } = r;
+  newChar.value = { ...blankChar(), ...rest, secrets: secrets.join('; ') };
+  seedTraits.value = traits;
+}
+function discardSeed() { newChar.value = blankChar(); seedTraits.value = null; }
 async function savePremise() { if (bible.value) await run('saving', () => api('/premise', 'PUT', bible.value!.premise)); }
 async function saveProject() { if (bible.value) await run('saving', () => api('/project', 'PUT', bible.value!.project)); }
 const newWorld = ref({ kind: 'location', name: '', summary: '', details: '' });
@@ -211,18 +224,22 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
         <div class="row"><select v-model="newWorld.kind" style="flex:0 0 130px"><option>location</option><option>faction</option><option>rule</option><option>item</option><option>glossary</option></select><input v-model="newWorld.name" placeholder="Name" /></div>
         <input v-model="newWorld.summary" placeholder="Summary" style="margin-top:8px" /><button class="pill solid" :disabled="!newWorld.name" @click="addWorld">Add world entry</button>
       </Panel>
-      <Panel :span="6" eyebrow="By hand" title="Fill the sheet directly">
-        <div class="field-row"><input v-model="newChar.name" placeholder="Name" /><input v-model="newChar.role" placeholder="Role" /></div>
-        <textarea v-model="newChar.summary" placeholder="Summary" />
-        <div class="field-row"><input v-model="newChar.want" placeholder="Want" /><input v-model="newChar.need" placeholder="Need" /></div>
-        <div class="field-row"><input v-model="newChar.wound" placeholder="Wound" /><input v-model="newChar.arc" placeholder="Arc" /></div>
-        <textarea v-model="newChar.voiceSample" placeholder="Voice sample: a few lines they would say" /><input v-model="newChar.secrets" placeholder="Secrets; separated; by semicolons" />
-        <button class="pill solid" :disabled="!newChar.name" @click="addCharacter">Add character</button>
+      <Panel :span="6" :eyebrow="seedTraits ? 'Proposed · edit before adding' : 'By hand'" :title="seedTraits ? `Seeded: ${newChar.name || 'unnamed'}` : 'Fill the sheet directly'">
+        <div class="field-row"><div><label>Name</label><input v-model="newChar.name" /></div><div><label>Role</label><input v-model="newChar.role" /></div></div>
+        <label>Summary</label><textarea v-model="newChar.summary" />
+        <div class="field-row"><div><label>Want</label><input v-model="newChar.want" /></div><div><label>Need</label><input v-model="newChar.need" /></div></div>
+        <div class="field-row"><div><label>Wound</label><input v-model="newChar.wound" /></div><div><label>Arc</label><input v-model="newChar.arc" /></div></div>
+        <label>Voice sample</label><textarea v-model="newChar.voiceSample" placeholder="A few lines they would say" />
+        <label>Secrets</label><input v-model="newChar.secrets" placeholder="separated; by semicolons" />
+        <div class="row" style="margin-top:8px"><button class="pill solid" :disabled="!newChar.name || !!busy" @click="addCharacter">{{ seedTraits ? 'Add this character' : 'Add character' }}</button><button v-if="seedTraits" class="pill" @click="discardSeed">Discard proposal</button></div>
       </Panel>
       <Panel :span="6" eyebrow="From a reference" title="Seed a character">
         <input v-model="seedText" placeholder="A Deckard-type burnt-out investigator, or Miss Havisham" /><input v-model="seedNotes" placeholder="Notes (optional)" />
         <Cta :disabled="!seedText || !!busy" @click="seed">Propose</Cta>
-        <template v-if="seedResult"><pre class="json" style="margin-top:16px">{{ JSON.stringify(seedResult, null, 2) }}</pre><div class="row" style="margin-top:12px"><button class="pill solid" @click="keepSeed">Keep this character</button><button class="pill" @click="seedResult = null">Discard</button></div></template>
+        <template v-if="seedTraits">
+          <p class="muted" style="margin-top:16px">The proposal is in the sheet{{ ' ' }}<span class="only-wide">to the left</span><span class="only-narrow">above</span>. Edit anything, then add it. These traits go onto the soul with it:</p>
+          <ul class="list plain"><li v-for="(t, i) in seedTraits" :key="i" class="row"><span class="status">{{ t.key }}</span><span style="flex:1">{{ t.value }}</span><button class="pill" @click="seedTraits.splice(i, 1)">Drop</button></li></ul>
+        </template>
       </Panel>
     </div>
 

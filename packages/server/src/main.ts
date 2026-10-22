@@ -26,7 +26,8 @@ app.post('/api/characters', async (c) => { const ch = await studio.store.addChar
 app.put('/api/characters/:id', async (c) => { await studio.updateCharacterSafe(c.req.param('id'), await c.req.json()); return c.json({ ok: true }); });
 app.post('/api/characters/build', async (c) => { const { id, history, message } = await c.req.json(); return c.json(await studio.buildTurn(id ?? null, history ?? [], message)); });
 app.post('/api/characters/apply', async (c) => { const { id, edits } = await c.req.json(); return c.json(await studio.applyEdits(id ?? null, edits)); });
-app.post('/api/characters/seed', async (c) => { const { inspiration, notes, add } = await c.req.json(); const seed = await studio.seed(inspiration, notes); return c.json(add ? await studio.addSeeded(seed) : seed); });
+// add=true with a `seed` saves that exact (possibly author-edited) proposal; without one it proposes and saves in one go.
+app.post('/api/characters/seed', async (c) => { const { inspiration, notes, add, seed } = await c.req.json(); if (add && seed) return c.json(await studio.addSeeded(seed)); const s = await studio.seed(inspiration, notes); return c.json(add ? await studio.addSeeded(s) : s); });
 app.get('/api/characters/:id/state', async (c) => c.json(await studio.state(c.req.param('id'), c.req.query('asOf') ? Number(c.req.query('asOf')) : undefined)));
 app.get('/api/characters/:id/events', async (c) => c.json(await studio.store.events(c.req.param('id'))));
 app.post('/api/characters/:id/chat', async (c) => { const { message, asOf, history } = await c.req.json(); return c.json(await studio.chat(c.req.param('id'), message, asOf, history ?? [])); });
