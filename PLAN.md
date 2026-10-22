@@ -83,6 +83,43 @@ and drafter, mid-tier for actor, local 9B for extraction.
 6. Continuity & verify: ledger view, contradictions, timeline, who-knows-what matrix.
 7. Export: Markdown / DOCX / EPUB with front matter; a "bible" export of world + cast.
 
+### 4a. Design direction (run through the high-end-visual-design skill)
+
+Skill: `.claude/skills/high-end-visual-design` (taste-skill-classics), opt-in. It is
+written for marketing sites; this is a tool people write in for hours, so each rule is
+kept, adapted or dropped deliberately.
+
+- Vibe: **Editorial Luxury**. Warm paper (`#FBF8F2`), espresso ink, a muted sage and a
+  burnt-sienna accent; dark mode is espresso, not black. Variable serif display
+  (Fraunces) for headings, Newsreader for prose, Geist for interface text. All three
+  self-hosted (fontsource), so the studio still works offline and nothing about the
+  author is sent to a font CDN. A fixed, pointer-events-none film grain at 3%.
+- Layout: **Editorial Split** for the writing surfaces (Studio, Scenes, Character room):
+  a wide prose column, a narrow column of context (card, findings, mind, soul).
+  **Asymmetrical Bento** for the dashboards (Bible, Style, Verify): cards of different
+  spans instead of an even grid. Everything collapses to one column under 768px.
+- Components: every panel is a **double-bezel** card (tinted shell, hairline ring,
+  inner core with its own top highlight and concentric radius). Primary actions are
+  pills; the main call to action in each view carries the **button-in-button** arrow
+  that shifts on hover. Each view opens with an **eyebrow** tag, a large serif title
+  and one line saying what the view is for.
+- Navigation: a **floating island** pill (detached from the top, glass blur, the only
+  blurred element). On phones it becomes a hamburger that morphs into an X and opens a
+  full-screen glass sheet with staggered links.
+- Motion: one spring curve (`cubic-bezier(0.32,0.72,0,1)`) for everything; views and
+  cards fade up from a slight blur on entry, via IntersectionObserver, transform and
+  opacity only. Honour `prefers-reduced-motion`.
+
+Adapted for a work tool:
+- Macro-whitespace (the skill's py-24 to py-40) applies to each view's header, not
+  between working panels; the editor needs density, not air.
+- The prose editor is the calmest surface on screen: no ring, no motion, a reading
+  measure of about 70 characters, 1.75 line height.
+- Entry animations play when a view or card first appears, never on every data
+  refresh, so typing and saving never make the screen move.
+- Findings, verdicts ("This is me" / "Not me") and statuses stay plain and legible;
+  colour is reserved for state (ok / warn / error), not decoration.
+
 ## 5. Data & privacy
 - Supabase per-user rows, RLS on everything, manuscripts in Postgres (versioned via
   an append-only `scene_versions` table), assets in storage.

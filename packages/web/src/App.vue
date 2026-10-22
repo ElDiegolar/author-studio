@@ -2,8 +2,27 @@
 import { computed, onMounted, ref } from 'vue';
 import { diffWords } from 'diff';
 import { api, type Bible, type Character, type Finding, type Scene, type Version } from './api';
+import Panel from './components/Panel.vue';
+import Cta from './components/Cta.vue';
 
-const tab = ref<'studio' | 'bible' | 'scenes' | 'room' | 'muse' | 'style' | 'verify'>('studio');
+type Tab = 'studio' | 'bible' | 'scenes' | 'room' | 'muse' | 'style' | 'verify';
+const tab = ref<Tab>('studio');
+const menu = ref(false);
+const TABS: { id: Tab; label: string; eyebrow: string; title: string; lede: string }[] = [
+  { id: 'studio', label: 'Studio', eyebrow: 'Studio', title: '', lede: 'Say what you want done. The agent reads and writes the book; every other room is the same book by hand.' },
+  { id: 'bible', label: 'Bible', eyebrow: 'The book as a database', title: 'The <em>bible</em>', lede: 'Premise, world and cast. Characters are souls: what you write here is where their lives begin.' },
+  { id: 'scenes', label: 'Scenes', eyebrow: 'Drafting', title: 'Scene by <em>scene</em>', lede: 'The AI proposes, you dispose. Rewrite a draft and save it: the difference teaches your writer soul.' },
+  { id: 'room', label: 'Characters', eyebrow: 'Character room', title: 'Talk to <em>them</em>', lede: 'Slide the horizon to meet a character as they were at any scene. They know only what they have lived.' },
+  { id: 'muse', label: 'Muse', eyebrow: "Writer's block", title: 'Throw me <em>ideas</em>', lede: 'Pressure points found in the souls. Let some characters decide for themselves; nothing here is saved.' },
+  { id: 'style', label: 'Style', eyebrow: 'Writer soul', title: 'Your <em>voice</em>', lede: 'Learned from your own prose and from every AI draft you rewrite. Tell it what is you and what is not.' },
+  { id: 'verify', label: 'Verify', eyebrow: 'Deterministic checks', title: 'Who is <em>right</em>', lede: 'No model decides here: continuity, timeline, point of view, length, and whether a draft still sounds like you.' },
+];
+const meta = computed(() => TABS.find((t) => t.id === tab.value)!);
+function go(t: Tab) { menu.value = false; tab.value = t; if (t === 'style') loadStyle(); if (t === 'verify') verify(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+const initials = (name: string) => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+function ask(q: string, def: string): string | undefined { return window.prompt(q, def) ?? undefined; }
+function openExport() { window.open('/api/export.md', '_blank'); }
+const SUGGEST = ['Set the premise: …', 'Add a character like a burnt-out harbour pilot', 'Outline three chapters', 'Draft scene 2 and let Mara decide for herself', 'What does Jonah know as of scene 3?', "I'm stuck on the breakfast scene", 'Export the book'];
 const aHistory = ref<{ role: 'user' | 'assistant'; content: string; events?: { kind: string; text: string }[] }[]>([]); const aMsg = ref('');
 async function agentSend() { const m = aMsg.value; aMsg.value = ''; aHistory.value.push({ role: 'user', content: m }); const r = await run('agent working', () => api<{ reply: string; events: { kind: string; text: string }[] }>('/agent', 'POST', { history: aHistory.value.slice(0, -1).map(({ role, content }) => ({ role, content })), message: m })); if (r) { aHistory.value.push({ role: 'assistant', content: r.reply, events: r.events.filter((e) => e.kind === 'action') }); await load(); } }
 const bible = ref<Bible | null>(null);
@@ -31,6 +50,12 @@ async function saveProject() { if (bible.value) await run('saving', () => api('/
 const newWorld = ref({ kind: 'location', name: '', summary: '', details: '' });
 async function addWorld() { await run('adding', () => api('/world', 'POST', newWorld.value)); newWorld.value = { kind: 'location', name: '', summary: '', details: '' }; await load(); }
 
+const glance = computed(() => {
+  const b = bible.value; if (!b) return [];
+  const accepted = b.scenes.filter((s) => s.status === 'accepted').length;
+  return [{ n: b.characters.length, l: 'characters' }, { n: `${accepted}/${b.scenes.length}`, l: 'scenes accepted' }, { n: b.facts.length, l: 'continuity facts' }, { n: b.world.length, l: 'world entries' }];
+});
+
 // ---- scenes ----
 const sceneId = ref(''); const scene = computed(() => bible.value?.scenes.find((s) => s.id === sceneId.value));
 const versions = ref<Version[]>([]); const text = ref(''); const findings = ref<Finding[]>([]); const draftBase = ref<string | null>(null);
@@ -44,6 +69,11 @@ async function accept() { const r = await run('accepting', () => api<{ facts: un
 const proof = ref<{ original: string; fix: string; reason: string }[]>([]);
 async function proofread() { proof.value = (await run('proofreading', () => api<typeof proof.value>(`/scenes/${sceneId.value}/proof`, 'POST'))) ?? []; }
 function applyFix(p: { original: string; fix: string }) { text.value = text.value.replace(p.original, p.fix); proof.value = proof.value.filter((x) => x !== p); }
+const chapters = computed(() => {
+  const m = new Map<number, Scene[]>();
+  for (const s of [...(bible.value?.scenes ?? [])].sort((a, b) => a.order - b.order)) m.set(s.chapter, [...(m.get(s.chapter) ?? []), s]);
+  return [...m.entries()];
+});
 const diff = computed(() => (draftBase.value === null ? [] : diffWords(draftBase.value, text.value)));
 const editNote = ref(''); const selection = ref('');
 function grabSelection() { selection.value = window.getSelection()?.toString() ?? ''; }
@@ -80,163 +110,280 @@ async function sheet() { await run('distilling', () => api('/style/sheet', 'POST
 
 // ---- verify ----
 const report = ref<Record<string, Finding[]> | null>(null);
+const reportCounts = computed(() => {
+  const all = Object.values(report.value ?? {}).flat();
+  return [{ n: all.filter((f) => f.level === 'error').length, l: 'errors' }, { n: all.filter((f) => f.level === 'warn').length, l: 'warnings' }, { n: Object.values(report.value ?? {}).filter((f) => !f.length).length, l: 'clean sections' }];
+});
 async function verify() { report.value = (await run('verifying', () => api<Record<string, Finding[]>>('/verify'))) ?? null; }
 </script>
 
 <template>
-  <header>
-    <h1>{{ bible?.project.title ?? 'Author Studio' }}</h1>
-    <nav>
-      <button :class="{ on: tab === 'studio' }" @click="tab = 'studio'">Studio</button>
-      <button :class="{ on: tab === 'bible' }" @click="tab = 'bible'">Bible</button>
-      <button :class="{ on: tab === 'scenes' }" @click="tab = 'scenes'">Scenes</button>
-      <button :class="{ on: tab === 'room' }" @click="tab = 'room'">Character room</button>
-      <button :class="{ on: tab === 'muse' }" @click="tab = 'muse'">Muse</button>
-      <button :class="{ on: tab === 'style' }" @click="tab = 'style'; loadStyle()">Style</button>
-      <button :class="{ on: tab === 'verify' }" @click="tab = 'verify'; verify()">Verify</button>
-    </nav>
-    <span class="muted" v-if="busy">{{ busy }}…</span>
-    <span class="f-error" v-if="error">{{ error }}</span>
-  </header>
+  <div class="grain" aria-hidden="true" />
 
-  <div v-if="!bible" class="muted">loading…</div>
-
-  <!-- STUDIO: everything is chat; the other tabs are the manual editing option -->
-  <div v-else-if="tab === 'studio'" class="card">
-    <h3>Studio <span class="muted">talk to the agent; it reads and writes the book. The other tabs edit by hand.</span></h3>
-    <div class="chat" style="max-height:520px"><template v-for="(h, i) in aHistory" :key="i"><p :class="h.role === 'user' ? 'u' : ''">{{ h.role === 'user' ? 'You: ' : '' }}{{ h.content }}</p><p v-for="(e, j) in h.events ?? []" :key="j" class="muted" style="font:12px/1.4 monospace">▸ {{ e.text }}</p></template><p v-if="!aHistory.length" class="muted">Try: "set the premise: …", "add a character like …", "outline three chapters", "draft scene 2 and let Mara decide for herself", "what does Jonah know as of scene 3?", "I'm stuck on the breakfast scene", "export the book".</p><p v-if="busy" class="muted">{{ busy }}…</p></div>
-    <div class="row"><input v-model="aMsg" placeholder="What do you want done?" style="width:85%" @keyup.enter="agentSend" /><button class="act" :disabled="!aMsg || !!busy" @click="agentSend">Send</button></div>
+  <nav class="island" :class="{ open: menu }" aria-label="Rooms">
+    <span class="brand">{{ bible?.project.title ?? 'Author Studio' }}</span>
+    <div class="links"><button v-for="t in TABS" :key="t.id" :class="{ on: tab === t.id }" @click="go(t.id)">{{ t.label }}</button></div>
+    <span v-if="busy" class="pulse"><i />{{ busy }}</span>
+    <button class="burger" :aria-expanded="menu" aria-label="Menu" @click="menu = !menu"><i /><i /></button>
+  </nav>
+  <div v-if="menu" class="sheet">
+    <button v-for="(t, i) in TABS" :key="t.id" :class="{ on: tab === t.id }" :style="{ animationDelay: `${80 + i * 50}ms` }" @click="go(t.id)">{{ t.label }}</button>
   </div>
 
-  <!-- BIBLE -->
-  <div v-else-if="tab === 'bible'" class="grid">
-    <div class="card">
-      <h3>Project</h3>
-      <label>Title</label><input v-model="bible.project.title" @change="saveProject" />
-      <label>Genre</label><input v-model="bible.project.genre" @change="saveProject" />
-      <div class="row"><div><label>POV</label><select v-model="bible.project.voice.pov" @change="saveProject"><option>first</option><option>third-limited</option><option>third-omniscient</option></select></div>
-      <div><label>Tense</label><select v-model="bible.project.voice.tense" @change="saveProject"><option>past</option><option>present</option></select></div></div>
-      <label>Tone</label><input v-model="bible.project.voice.tone" @change="saveProject" />
-      <h3 style="margin-top:12px">Premise</h3>
-      <label>Logline</label><textarea v-model="bible.premise.logline" @change="savePremise" />
-      <label>Dramatic question</label><input v-model="bible.premise.dramaticQuestion" @change="savePremise" />
-      <label>Theme</label><input v-model="bible.premise.theme" @change="savePremise" />
-      <label>Ending</label><textarea v-model="bible.premise.ending" @change="savePremise" />
-      <h3 style="margin-top:12px">World</h3>
-      <ul class="list"><li v-for="w in bible.world" :key="w.id"><b>{{ w.name }}</b> <span class="muted">{{ w.kind }}</span> — {{ w.summary }}</li></ul>
-      <div class="row"><select v-model="newWorld.kind" style="width:auto"><option>location</option><option>faction</option><option>rule</option><option>item</option><option>glossary</option></select><input v-model="newWorld.name" placeholder="name" /></div>
-      <input v-model="newWorld.summary" placeholder="summary" /><button class="act" @click="addWorld">Add world entry</button>
-    </div>
-    <div class="card">
-      <h3>Cast</h3>
-      <ul class="list"><li v-for="c in bible.characters" :key="c.id" @click="tab = 'room'; openRoom(c.id)"><b>{{ c.name }}</b> <span class="muted">{{ c.role }}</span><br /><span class="muted">{{ c.summary }}</span></li></ul>
-      <h3 style="margin-top:12px">Build a character by talking <span class="muted">{{ bId ? 'editing ' + byId(bId) : 'new' }}</span></h3>
-      <div class="row"><button class="ghost" @click="buildStart(null)">New</button><select style="width:auto" @change="buildStart(($event.target as HTMLSelectElement).value || null)"><option value="">edit existing…</option><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select></div>
-      <div class="chat" style="max-height:260px"><p v-for="(h, i) in bHistory" :key="i" :class="h.role === 'user' ? 'u' : ''">{{ h.role === 'user' ? 'You: ' : '' }}{{ h.content }}</p><p v-if="!bHistory.length" class="muted">Describe who you have in mind. The agent asks, proposes, and writes the soul when you apply.</p></div>
-      <div class="row"><input v-model="bMsg" placeholder="e.g. a harbour pilot who is charming and quietly desperate" style="width:75%" @keyup.enter="buildSend" /><button class="act" :disabled="!bMsg || !!busy" @click="buildSend">Send</button></div>
-      <div v-if="bEdits.length" class="card"><h3>Proposed edits <span v-if="bReady" class="ok">ready</span></h3><ul class="list"><li v-for="(e, i) in bEdits" :key="i"><b>{{ e.op }}</b> {{ e.field ?? e.key ?? e.other ?? '' }} → {{ e.value }} <button class="ghost" @click="bEdits.splice(i, 1)">drop</button></li></ul><button class="act" @click="buildApply">Apply to soul</button></div>
-      <h3 style="margin-top:12px">Or fill the sheet directly</h3>
-      <input v-model="newChar.name" placeholder="name" /><input v-model="newChar.role" placeholder="role" /><textarea v-model="newChar.summary" placeholder="summary" />
-      <input v-model="newChar.want" placeholder="want" /><input v-model="newChar.need" placeholder="need" /><input v-model="newChar.wound" placeholder="wound" /><input v-model="newChar.arc" placeholder="arc" />
-      <textarea v-model="newChar.voiceSample" placeholder="voice sample: a few lines they would say" /><input v-model="newChar.secrets" placeholder="secrets; separated; by semicolons" />
-      <button class="act" :disabled="!newChar.name" @click="addCharacter">Add character</button>
-      <h3 style="margin-top:12px">Seed from a reference</h3>
-      <input v-model="seedText" placeholder="e.g. a Deckard-type burnt-out investigator, or Miss Havisham" /><input v-model="seedNotes" placeholder="notes (optional)" />
-      <button class="act" :disabled="!seedText" @click="seed">Propose</button>
-      <div v-if="seedResult" class="card" style="margin-top:8px"><pre style="white-space:pre-wrap;font:13px/1.4 monospace">{{ JSON.stringify(seedResult, null, 2) }}</pre><button class="act" @click="keepSeed">Keep this character</button><button class="ghost" @click="seedResult = null">Discard</button></div>
-    </div>
-  </div>
+  <main class="page">
+    <header :key="tab" v-reveal class="hero">
+      <span class="eyebrow">{{ meta.eyebrow }}</span>
+      <h1 v-if="meta.title" v-html="meta.title" />
+      <h1 v-else>{{ bible?.project.title ?? 'Author Studio' }}</h1>
+      <p class="lede">{{ meta.lede }}</p>
+    </header>
 
-  <!-- SCENES -->
-  <div v-else-if="tab === 'scenes'" class="grid" style="grid-template-columns: 1fr 2fr">
-    <div class="card">
-      <h3>Scenes <button class="ghost" @click="outline">AI outline…</button></h3>
-      <ul class="list"><li v-for="s in bible.scenes" :key="s.id" :class="{ on: s.id === sceneId }" @click="openScene(s.id)">#{{ s.order }} ch{{ s.chapter }} <b>{{ s.title }}</b> <span class="muted">[{{ s.status }}] POV {{ byId(s.pov) }}</span></li></ul>
-      <h3 style="margin-top:12px">New scene card</h3>
-      <input v-model="newScene.title" placeholder="title" /><div class="row"><input v-model.number="newScene.chapter" type="number" placeholder="chapter" style="width:80px" /><select v-model="newScene.pov"><option value="">POV…</option><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select></div>
-      <select v-model="newScene.characters" multiple><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-      <input v-model="newScene.goal" placeholder="goal" /><input v-model="newScene.conflict" placeholder="conflict" /><input v-model="newScene.outcome" placeholder="outcome" /><input v-model="newScene.location" placeholder="location" /><input v-model="newScene.time" placeholder="time" />
-      <button class="act" :disabled="!newScene.title || !newScene.pov" @click="addScene">Add scene</button>
-    </div>
-    <div class="card" v-if="scene">
-      <h3>#{{ scene.order }} {{ scene.title }} <span class="muted">{{ scene.goal }} → {{ scene.outcome }}</span></h3>
-      <div class="row">
-        <button class="act" :disabled="!!busy" @click="draft(false)">Draft with AI</button>
-        <button class="act" :disabled="!!busy || !draftAgency.length" @click="draft(true)" title="The ticked characters decide first; the prose honours their choices">Draft with agency</button>
-        <label v-for="id in scene.characters" :key="id" style="margin:0"><input type="checkbox" :value="id" v-model="draftAgency" style="width:auto" /> {{ byId(id) }}</label>
-        <button class="act" :disabled="!!busy || !text" @click="saveText">Save my text</button>
-        <button class="act" :disabled="!!busy || !versions.length" @click="accept">Accept (facts + witness)</button>
-        <button class="ghost" :disabled="!!busy || !text" @click="proofread">Proofread</button>
-        <span class="muted">{{ versions.length }} version(s)</span>
-      </div>
-      <textarea class="prose" v-model="text" @mouseup="grabSelection" />
-      <div class="row" v-if="selection"><span class="muted">selection: {{ selection.length }} chars</span><input v-model="editNote" placeholder="note for the line editor" style="width:50%" /><button class="ghost" @click="editSel">Edit selection</button></div>
-      <ul class="list" v-if="findings.length"><li v-for="(f, i) in findings" :key="i" :class="'f-' + f.level">{{ f.code }}: {{ f.message }}</li></ul>
-      <div v-if="proof.length" class="card"><h3>Proofreading</h3><div v-for="(p, i) in proof" :key="i" class="row"><del>{{ p.original }}</del> → <ins>{{ p.fix }}</ins> <span class="muted">{{ p.reason }}</span><button class="ghost" @click="applyFix(p)">apply</button></div></div>
-      <div v-if="diff.length" class="card diff"><h3>Your edits vs the AI draft <span class="muted">(saving teaches the style profile)</span></h3><p><template v-for="(d, i) in diff" :key="i"><ins v-if="d.added">{{ d.value }}</ins><del v-else-if="d.removed">{{ d.value }}</del><span v-else>{{ d.value }}</span></template></p></div>
-    </div>
-    <div class="card muted" v-else>Pick a scene, or add a card.</div>
-  </div>
+    <p v-if="!bible" class="empty">Opening the book…</p>
 
-  <!-- CHARACTER ROOM -->
-  <div v-else-if="tab === 'room'" class="grid" style="grid-template-columns: 1fr 2fr">
-    <div class="card">
-      <h3>Who</h3>
-      <ul class="list"><li v-for="c in bible.characters" :key="c.id" :class="{ on: c.id === roomId }" @click="openRoom(c.id)"><b>{{ c.name }}</b> <span class="muted">{{ c.role }}</span></li></ul>
-      <div v-if="roomId">
-        <label>Knowledge horizon: as of scene {{ asOf ?? 'end' }}</label>
-        <input type="range" :min="0" :max="maxOrder" :value="asOf ?? maxOrder" @input="asOf = Number(($event.target as HTMLInputElement).value); refreshState()" />
-        <button class="ghost" @click="asOf = null; refreshState()">whole story</button>
-        <h3 style="margin-top:12px">Mind</h3>
-        <div class="row"><button class="ghost" :disabled="!!busy" @click="run('building mirror', () => api(`/characters/${roomId}/mirror`, 'POST')).then(refreshState)">Build psychological mirror</button></div>
-        <div class="row"><input v-model="situation" placeholder="a situation for them to decide on" style="width:70%" /><button class="ghost" :disabled="!situation || !!busy" @click="decideIt">Let them decide</button></div>
-        <div v-if="decision" class="idea"><b>{{ decision.decision }}</b><br /><span class="muted">{{ decision.reasoning }}</span><br /><span class="muted">rejected: {{ decision.rejected.join('; ') }} · feeling {{ decision.emotion }} · cost: {{ decision.cost }}</span><br /><span v-if="decisionSaved" class="ok">saved to soul</span><button v-else class="ghost" @click="keepDecision">Keep this decision</button> <span class="muted" v-if="!decisionSaved">(scratch until kept)</span></div>
-        <h3 style="margin-top:12px">Soul</h3>
-        <div class="row"><button class="ghost" @click="soul('save', prompt('Snapshot name?', 'snapshot') ?? undefined)">Save</button><button class="ghost" @click="soul('reset')">Reset to base</button><button class="ghost" @click="api(`/characters/${roomId}/souls`).then((s) => souls = s as string[])">List</button></div>
-        <ul class="list"><li v-for="s in souls" :key="s" @click="soul('restore', s)">restore <b>{{ s }}</b></li></ul>
-        <pre v-if="state" style="white-space:pre-wrap;font:12px/1.4 monospace" class="muted">{{ JSON.stringify(state, null, 1) }}</pre>
+    <!-- STUDIO: everything is chat; the other rooms are the manual option -->
+    <div v-else-if="tab === 'studio'" class="bento">
+      <Panel :span="8" eyebrow="Conversation" title="The studio agent">
+        <div class="chat">
+          <template v-for="(h, i) in aHistory" :key="i">
+            <div class="bubble" :class="h.role === 'user' ? 'me' : 'them'">{{ h.content }}</div>
+            <div v-for="(e, j) in h.events ?? []" :key="j" class="trace">▸ {{ e.text }}</div>
+          </template>
+          <p v-if="!aHistory.length" class="empty">Nothing said yet. Ask for anything the other rooms can do.</p>
+          <div v-if="busy" class="trace">{{ busy }}…</div>
+        </div>
+        <div class="composer"><input v-model="aMsg" placeholder="What do you want done?" @keyup.enter="aMsg && !busy && agentSend()" /><Cta :disabled="!aMsg || !!busy" @click="agentSend">Send</Cta></div>
+      </Panel>
+      <div class="stack span-4">
+        <Panel eyebrow="Try saying">
+          <div class="chips"><button v-for="s in SUGGEST" :key="s" @click="aMsg = s">{{ s }}</button></div>
+        </Panel>
+        <Panel eyebrow="The book at a glance">
+          <div class="stat-grid"><div v-for="g in glance" :key="g.l" class="stat"><b>{{ g.n }}</b><span>{{ g.l }}</span></div></div>
+        </Panel>
       </div>
     </div>
-    <div class="card" v-if="roomId">
-      <h3>Talking to {{ byId(roomId) }} <span class="muted">as of scene {{ asOf ?? 'end' }}</span></h3>
-      <div class="chat"><template v-for="(h, i) in history" :key="i"><p :class="h.role === 'user' ? 'u' : ''">{{ h.role === 'user' ? 'You: ' : '' }}{{ h.content }}</p><p v-for="(f, j) in h.findings ?? []" :key="j" class="f-error">⚠ {{ f.message }}</p></template><p v-if="busy" class="muted">…</p></div>
-      <div class="row"><input v-model="msg" placeholder="Ask them something" @keyup.enter="send" style="width:80%" /><button class="act" :disabled="!msg || !!busy" @click="send">Send</button></div>
+
+    <!-- BIBLE -->
+    <div v-else-if="tab === 'bible'" class="bento">
+      <Panel :span="7" eyebrow="Project" title="Premise &amp; voice">
+        <div class="field-row"><div><label>Title</label><input v-model="bible.project.title" @change="saveProject" /></div><div><label>Genre</label><input v-model="bible.project.genre" @change="saveProject" /></div></div>
+        <div class="field-row">
+          <div><label>Point of view</label><select v-model="bible.project.voice.pov" @change="saveProject"><option>first</option><option>third-limited</option><option>third-omniscient</option></select></div>
+          <div><label>Tense</label><select v-model="bible.project.voice.tense" @change="saveProject"><option>past</option><option>present</option></select></div>
+        </div>
+        <label>Tone</label><input v-model="bible.project.voice.tone" @change="saveProject" />
+        <label>Logline</label><textarea v-model="bible.premise.logline" @change="savePremise" />
+        <div class="field-row"><div><label>Dramatic question</label><input v-model="bible.premise.dramaticQuestion" @change="savePremise" /></div><div><label>Theme</label><input v-model="bible.premise.theme" @change="savePremise" /></div></div>
+        <label>Ending</label><textarea v-model="bible.premise.ending" @change="savePremise" />
+      </Panel>
+      <Panel :span="5" eyebrow="Cast" :title="`${bible.characters.length} souls`">
+        <ul class="list">
+          <li v-for="c in bible.characters" :key="c.id" @click="go('room'); openRoom(c.id)">
+            <div class="who"><span class="avatar">{{ initials(c.name) }}</span><div><b>{{ c.name }}</b> <span class="muted">{{ c.role }}</span><br /><span class="muted">{{ c.summary }}</span></div></div>
+          </li>
+        </ul>
+      </Panel>
+      <Panel :span="7" eyebrow="Build by talking" :title="bId ? `Editing ${byId(bId)}` : 'A new character'">
+        <template #actions><button class="pill" @click="buildStart(null)">New</button><select style="width:auto;margin:0" @change="buildStart(($event.target as HTMLSelectElement).value || null)"><option value="">Edit existing…</option><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select></template>
+        <div class="chat" style="min-height:200px;max-height:320px">
+          <div v-for="(h, i) in bHistory" :key="i" class="bubble" :class="h.role === 'user' ? 'me' : 'them'">{{ h.content }}</div>
+          <p v-if="!bHistory.length" class="empty">Describe who you have in mind. The agent asks, proposes, and writes the soul when you apply.</p>
+        </div>
+        <div class="composer"><input v-model="bMsg" placeholder="A harbour pilot, charming and quietly desperate" @keyup.enter="bMsg && !busy && buildSend()" /><Cta :disabled="!bMsg || !!busy" @click="buildSend">Send</Cta></div>
+        <template v-if="bEdits.length">
+          <h3>Proposed edits <span v-if="bReady" class="ok">· ready</span></h3>
+          <ul class="list plain"><li v-for="(e, i) in bEdits" :key="i" class="row"><span class="status">{{ e.op }}</span> <b>{{ e.field ?? e.key ?? e.other ?? '' }}</b> → {{ e.value }} <button class="pill" @click="bEdits.splice(i, 1)">Drop</button></li></ul>
+          <div class="row" style="margin-top:12px"><Cta @click="buildApply">Apply to soul</Cta></div>
+        </template>
+      </Panel>
+      <Panel :span="5" eyebrow="World" :title="`${bible.world.length} entries`">
+        <ul class="list plain"><li v-for="w in bible.world" :key="w.id"><b>{{ w.name }}</b> <span class="status">{{ w.kind }}</span><br /><span class="muted">{{ w.summary }}</span></li></ul>
+        <h3>Add an entry</h3>
+        <div class="row"><select v-model="newWorld.kind" style="flex:0 0 130px"><option>location</option><option>faction</option><option>rule</option><option>item</option><option>glossary</option></select><input v-model="newWorld.name" placeholder="Name" /></div>
+        <input v-model="newWorld.summary" placeholder="Summary" style="margin-top:8px" /><button class="pill solid" :disabled="!newWorld.name" @click="addWorld">Add world entry</button>
+      </Panel>
+      <Panel :span="6" eyebrow="By hand" title="Fill the sheet directly">
+        <div class="field-row"><input v-model="newChar.name" placeholder="Name" /><input v-model="newChar.role" placeholder="Role" /></div>
+        <textarea v-model="newChar.summary" placeholder="Summary" />
+        <div class="field-row"><input v-model="newChar.want" placeholder="Want" /><input v-model="newChar.need" placeholder="Need" /></div>
+        <div class="field-row"><input v-model="newChar.wound" placeholder="Wound" /><input v-model="newChar.arc" placeholder="Arc" /></div>
+        <textarea v-model="newChar.voiceSample" placeholder="Voice sample: a few lines they would say" /><input v-model="newChar.secrets" placeholder="Secrets; separated; by semicolons" />
+        <button class="pill solid" :disabled="!newChar.name" @click="addCharacter">Add character</button>
+      </Panel>
+      <Panel :span="6" eyebrow="From a reference" title="Seed a character">
+        <input v-model="seedText" placeholder="A Deckard-type burnt-out investigator, or Miss Havisham" /><input v-model="seedNotes" placeholder="Notes (optional)" />
+        <Cta :disabled="!seedText || !!busy" @click="seed">Propose</Cta>
+        <template v-if="seedResult"><pre class="json" style="margin-top:16px">{{ JSON.stringify(seedResult, null, 2) }}</pre><div class="row" style="margin-top:12px"><button class="pill solid" @click="keepSeed">Keep this character</button><button class="pill" @click="seedResult = null">Discard</button></div></template>
+      </Panel>
     </div>
-    <div class="card muted" v-else>Pick a character. Slide the horizon to talk to them as they were at any scene.</div>
-  </div>
 
-  <!-- MUSE -->
-  <div v-else-if="tab === 'muse'" class="card">
-    <h3>Writer's block</h3>
-    <textarea v-model="scenario" placeholder="Optional: the scenario you are stuck on. Leave blank and the muse will find the pressure points in the souls." />
-    <div class="row"><label>As of scene</label><input type="number" v-model.number="museAsOf" style="width:90px" :max="maxOrder" :min="0" /></div>
-    <div class="row"><span class="muted">Who decides for themselves (the rest follow you):</span><label v-for="c in bible.characters" :key="c.id" style="margin:0"><input type="checkbox" :value="c.id" v-model="museAgency" style="width:auto" /> {{ c.name }}</label></div>
-    <div class="row"><button class="act" :disabled="!!busy" @click="museIt">Throw me ideas</button></div>
-    <div v-if="museDecisions.length" class="card"><h3>What they would do</h3><p class="muted">Scratch: nothing here is saved to anyone's soul.</p><div v-for="(d, k) in museDecisions" :key="k" class="idea"><b>{{ d.name }}</b>: {{ d.decision }} <span class="muted">({{ d.emotion }})</span><br /><span class="muted">{{ d.reasoning }}</span></div></div>
-    <div v-for="(i, k) in ideas" :key="k" class="idea"><b>{{ i.kind }}</b> — {{ i.idea }}<br /><span class="muted">grows from: {{ i.growsFrom }} · {{ i.characters.map(byId).join(', ') }}</span></div>
-  </div>
-
-  <!-- STYLE -->
-  <div v-else-if="tab === 'style'" class="grid">
-    <div class="card"><h3>Teach the drafter your voice</h3><p class="muted">Paste your own prose. Every time you rewrite an AI draft and save it, the draft and your version are both kept: the difference is what teaches.</p><textarea class="prose" v-model="sample" /><button class="act" :disabled="!sample" @click="addSample">Add sample</button><button class="ghost" @click="sheet">Distil style sheet</button>
-      <template v-if="style"><h3 style="margin-top:12px">Your habits when you rewrite AI drafts</h3><ul class="list"><li v-for="(t, k) in style.tendencies" :key="k">{{ t.text }}</li></ul><p v-if="!style.tendencies.length" class="muted">Measured once you have rewritten at least two AI drafts ({{ style.edits.length }} so far).</p>
-      <h3 style="margin-top:12px">Profile · {{ style.samples.length }} sample(s), {{ style.edits.length }} edit(s)</h3><pre style="white-space:pre-wrap;font:12px/1.4 monospace" class="muted">{{ JSON.stringify(style.stats, null, 1) }}</pre><h3>Style sheet</h3><p style="white-space:pre-wrap">{{ style.sheet || '(none yet)' }}</p></template></div>
-    <div class="card" v-if="style"><h3>Writer soul · {{ style.writerId }}<span v-if="style.asOf" class="muted"> as of {{ style.asOf.slice(0, 10) }}</span></h3>
-      <p class="muted">Rules learned from your edits. Say whether each one is you; confirmed rules go into every draft, rejected ones never come back.</p>
-      <button class="act" :disabled="!!busy || !style.edits.length" @click="learn">Learn from my edits<span v-if="style.unlearnedEdits"> ({{ style.unlearnedEdits }} new)</span></button>
-      <div v-for="r in style.rules" :key="r.id" class="idea" :style="r.status === 'rejected' ? 'opacity:.5' : ''">
-        <b>{{ r.text }}</b> <span class="muted">· {{ r.status }}<span v-if="r.status === 'proposed' && r.seen > 1">, seen {{ r.seen }}×</span><span v-if="r.origin === 'author'">, yours</span></span>
-        <br v-if="r.evidence.length" /><span v-if="r.evidence.length" class="muted">{{ r.evidence[r.evidence.length - 1] }}</span>
-        <div v-if="r.status === 'proposed'"><button class="ghost" @click="verdict(r.id, 'confirm')">This is me</button><button class="ghost" @click="verdict(r.id, 'reject')">Not me</button></div>
+    <!-- SCENES: editorial split, the prose is the widest and calmest surface -->
+    <div v-else-if="tab === 'scenes'" class="bento">
+      <div class="stack span-4">
+        <Panel eyebrow="Outline" title="Scenes">
+          <template #actions><button class="pill" :disabled="!!busy" @click="outline">AI outline…</button></template>
+          <template v-for="[ch, list] in chapters" :key="ch">
+            <div class="chapter">Chapter {{ ch }}</div>
+            <ul class="list"><li v-for="s in list" :key="s.id" :class="{ on: s.id === sceneId }" @click="openScene(s.id)"><b>{{ s.order }}. {{ s.title }}</b> <span class="status" :class="s.status">{{ s.status }}</span><br /><span class="muted">POV {{ byId(s.pov) }}</span></li></ul>
+          </template>
+        </Panel>
+        <Panel eyebrow="New card" title="Add a scene">
+          <input v-model="newScene.title" placeholder="Title" />
+          <div class="row"><input v-model.number="newScene.chapter" type="number" placeholder="Chapter" style="flex:0 0 96px" /><select v-model="newScene.pov"><option value="">POV…</option><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select></div>
+          <label>Who is in it</label><select v-model="newScene.characters" multiple><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select>
+          <input v-model="newScene.goal" placeholder="Goal" /><input v-model="newScene.conflict" placeholder="Conflict" /><input v-model="newScene.outcome" placeholder="Outcome" />
+          <div class="field-row"><input v-model="newScene.location" placeholder="Location" /><input v-model="newScene.time" placeholder="Time" /></div>
+          <button class="pill solid" :disabled="!newScene.title || !newScene.pov" @click="addScene">Add scene</button>
+        </Panel>
       </div>
-      <p v-if="!style.rules.length" class="muted">No rules yet. They are proposed every few edits, or press Learn.</p>
-      <h3 style="margin-top:12px">A rule of your own</h3><div class="row"><input v-model="ownRule" placeholder="Never open a chapter with weather" /><button class="ghost" :disabled="!ownRule" @click="addOwnRule">Add</button></div>
+      <div class="stack span-8" :class="{ 'first-on-phone': scene }">
+        <Panel v-if="scene" :key="scene.id" :eyebrow="`Scene ${scene.order} · chapter ${scene.chapter} · ${versions.length} version(s)`" :title="scene.title">
+          <p class="muted">{{ scene.goal }} → {{ scene.outcome }}</p>
+          <div class="toolbar">
+            <Cta :disabled="!!busy" @click="draft(false)">Draft with AI</Cta>
+            <button class="pill" :disabled="!!busy || !draftAgency.length" title="The ticked characters decide first; the prose honours their choices" @click="draft(true)">Draft with agency</button>
+            <label v-for="id in scene.characters" :key="id" class="check"><input v-model="draftAgency" type="checkbox" :value="id" /> {{ byId(id) }}</label>
+          </div>
+          <div class="prose-wrap"><textarea v-model="text" class="prose" placeholder="Write, or draft with AI and rewrite it in your voice." @mouseup="grabSelection" /></div>
+          <div class="toolbar">
+            <button class="pill solid" :disabled="!!busy || !text" @click="saveText">Save my text</button>
+            <button class="pill yes" :disabled="!!busy || !versions.length" @click="accept">Accept · facts &amp; witness</button>
+            <button class="pill" :disabled="!!busy || !text" @click="proofread">Proofread</button>
+          </div>
+          <div v-if="selection" class="composer"><span class="muted" style="padding-left:12px;white-space:nowrap">{{ selection.length }} chars</span><input v-model="editNote" placeholder="Note for the line editor" /><button class="pill" @click="editSel">Edit selection</button></div>
+        </Panel>
+        <Panel v-else eyebrow="Nothing open"><p class="empty">Pick a scene from the outline, or add a card.</p></Panel>
+        <Panel v-if="scene && findings.length" eyebrow="Findings">
+          <div v-for="(f, i) in findings" :key="i" class="finding" :class="'f-' + f.level"><code>{{ f.code }}</code><span>{{ f.message }}</span></div>
+        </Panel>
+        <Panel v-if="scene && proof.length" eyebrow="Proofreading" :title="`${proof.length} issue(s)`">
+          <div v-for="(p, i) in proof" :key="i" class="finding diff"><del>{{ p.original }}</del> → <ins>{{ p.fix }}</ins> <span class="muted">{{ p.reason }}</span><button class="pill" style="margin-left:auto" @click="applyFix(p)">Apply</button></div>
+        </Panel>
+        <Panel v-if="scene && diff.length" eyebrow="Saving this teaches your writer soul" title="Your edits vs the AI draft" class="diff">
+          <p><template v-for="(d, i) in diff" :key="i"><ins v-if="d.added">{{ d.value }}</ins><del v-else-if="d.removed">{{ d.value }}</del><span v-else>{{ d.value }}</span></template></p>
+        </Panel>
+      </div>
     </div>
-  </div>
 
-  <!-- VERIFY -->
-  <div v-else-if="tab === 'verify'" class="card">
-    <h3>Deterministic checks <button class="ghost" @click="verify">Re-run</button> <a class="ghost" href="/api/export.md" target="_blank">Export Markdown</a></h3>
-    <div v-for="(fs, key) in report ?? {}" :key="key"><b>{{ key }}</b> <span v-if="!fs.length" class="ok">clean</span><ul class="list"><li v-for="(f, i) in fs" :key="i" :class="'f-' + f.level">{{ f.code }}: {{ f.message }}</li></ul></div>
-  </div>
+    <!-- CHARACTER ROOM -->
+    <div v-else-if="tab === 'room'" class="bento">
+      <div class="stack span-4">
+        <Panel eyebrow="Who">
+          <ul class="list"><li v-for="c in bible.characters" :key="c.id" :class="{ on: c.id === roomId }" @click="openRoom(c.id)"><div class="who"><span class="avatar">{{ initials(c.name) }}</span><div><b>{{ c.name }}</b><br /><span class="muted">{{ c.role }}</span></div></div></li></ul>
+        </Panel>
+        <template v-if="roomId">
+          <Panel eyebrow="Knowledge horizon" :title="asOf === null ? 'The whole story' : `As of scene ${asOf}`">
+            <input type="range" :min="0" :max="maxOrder" :value="asOf ?? maxOrder" @input="asOf = Number(($event.target as HTMLInputElement).value); refreshState()" />
+            <button class="pill" @click="asOf = null; refreshState()">Whole story</button>
+          </Panel>
+          <Panel eyebrow="Mind">
+            <button class="pill" :disabled="!!busy" @click="run('building mirror', () => api(`/characters/${roomId}/mirror`, 'POST')).then(refreshState)">Build psychological mirror</button>
+            <label>A situation for them to decide on</label>
+            <input v-model="situation" placeholder="Jonah offers her the ledger back" /><button class="pill solid" :disabled="!situation || !!busy" @click="decideIt">Let them decide</button>
+            <div v-if="decision" class="idea" style="margin-top:12px">
+              <div class="idea-body">{{ decision.decision }}</div>
+              <p class="muted">{{ decision.reasoning }}</p>
+              <p class="muted">Rejected: {{ decision.rejected.join('; ') }} · feeling {{ decision.emotion }} · cost: {{ decision.cost }}</p>
+              <span v-if="decisionSaved" class="ok">Saved to soul</span><template v-else><button class="pill yes" @click="keepDecision">Keep this decision</button> <span class="muted">scratch until kept</span></template>
+            </div>
+          </Panel>
+          <Panel eyebrow="Soul">
+            <div class="row"><button class="pill" @click="soul('save', ask('Snapshot name?', 'snapshot'))">Save</button><button class="pill" @click="soul('reset')">Reset to base</button><button class="pill" @click="api(`/characters/${roomId}/souls`).then((s) => souls = s as string[])">List</button></div>
+            <ul class="list" style="margin-top:8px"><li v-for="s in souls" :key="s" @click="soul('restore', s)">Restore <b>{{ s }}</b></li></ul>
+            <details v-if="state"><summary>Replayed state</summary><pre class="json">{{ JSON.stringify(state, null, 1) }}</pre></details>
+          </Panel>
+        </template>
+      </div>
+      <Panel v-if="roomId" :key="roomId" :span="8" :eyebrow="asOf === null ? 'As of the end' : `As of scene ${asOf}`" :title="`Talking to ${byId(roomId)}`">
+        <div class="chat">
+          <template v-for="(h, i) in history" :key="i">
+            <div class="bubble" :class="h.role === 'user' ? 'me' : 'them'">{{ h.content }}</div>
+            <div v-for="(f, j) in h.findings ?? []" :key="j" class="trace f-error">⚠ {{ f.message }}</div>
+          </template>
+          <p v-if="!history.length" class="empty">Ask them something. They answer as they are at the horizon, and a leak detector checks every reply.</p>
+          <div v-if="busy" class="trace">…</div>
+        </div>
+        <div class="composer"><input v-model="msg" placeholder="Ask them something" @keyup.enter="msg && !busy && send()" /><Cta :disabled="!msg || !!busy" @click="send">Send</Cta></div>
+      </Panel>
+      <Panel v-else :span="8" eyebrow="Nobody yet"><p class="empty">Pick a character. Slide the horizon to talk to them as they were at any scene.</p></Panel>
+    </div>
+
+    <!-- MUSE -->
+    <div v-else-if="tab === 'muse'" class="bento">
+      <Panel :span="5" eyebrow="The scenario" title="Where are you stuck?">
+        <textarea v-model="scenario" style="min-height:160px" placeholder="Optional. Leave blank and the muse finds the pressure points in the souls." />
+        <div class="field-row"><div><label>As of scene</label><input v-model.number="museAsOf" type="number" :max="maxOrder" :min="0" placeholder="end" /></div></div>
+        <label>Who decides for themselves (the rest follow you)</label>
+        <div class="row"><label v-for="c in bible.characters" :key="c.id" class="check"><input v-model="museAgency" type="checkbox" :value="c.id" /> {{ c.name }}</label></div>
+        <div class="row" style="margin-top:16px"><Cta :disabled="!!busy" @click="museIt">Throw me ideas</Cta></div>
+      </Panel>
+      <div class="stack span-7">
+        <Panel v-if="museDecisions.length" eyebrow="Scratch · not saved to anyone's soul" title="What they would do">
+          <div v-for="(d, k) in museDecisions" :key="k" class="idea"><span class="idea-kind">{{ d.name }}</span><div class="idea-body">{{ d.decision }}</div><span class="muted">{{ d.emotion }} · {{ d.reasoning }}</span></div>
+        </Panel>
+        <Panel v-if="ideas.length" eyebrow="Ideas" :title="`${ideas.length} ways in`">
+          <div v-for="(i, k) in ideas" :key="k" class="idea"><span class="idea-kind">{{ i.kind }}</span><div class="idea-body">{{ i.idea }}</div><span class="muted">Grows from {{ i.growsFrom }} · {{ i.characters.map(byId).join(', ') }}</span></div>
+        </Panel>
+        <Panel v-if="!ideas.length && !museDecisions.length" eyebrow="Waiting"><p class="empty">Ideas land here, each one tied to the souls it grows from.</p></Panel>
+      </div>
+    </div>
+
+    <!-- STYLE: the writer soul -->
+    <div v-else-if="tab === 'style'" class="bento">
+      <template v-if="style">
+        <Panel :span="7" :eyebrow="`Writer soul · ${style.writerId}${style.asOf ? ' · as of ' + style.asOf.slice(0, 10) : ''}`" title="Is this you?">
+          <template #actions><Cta :disabled="!!busy || !style.edits.length" @click="learn">Learn from my edits<template v-if="style.unlearnedEdits"> · {{ style.unlearnedEdits }} new</template></Cta></template>
+          <p class="muted">Rules learned from your rewrites. Confirmed rules go into every draft; rejected ones never come back.</p>
+          <div v-for="r in style.rules" :key="r.id" class="rule" :class="r.status">
+            <div class="rule-text">{{ r.text }}</div>
+            <div v-if="r.evidence.length" class="evidence">{{ r.evidence[r.evidence.length - 1] }}</div>
+            <div class="row" style="margin-top:10px">
+              <span class="status" :class="{ accepted: r.status === 'confirmed' }">{{ r.status }}<template v-if="r.status === 'proposed' && r.seen > 1"> · seen {{ r.seen }}×</template><template v-if="r.origin === 'author'"> · yours</template></span>
+              <template v-if="r.status === 'proposed'"><button class="pill yes" @click="verdict(r.id, 'confirm')">This is me</button><button class="pill" @click="verdict(r.id, 'reject')">Not me</button></template>
+            </div>
+          </div>
+          <p v-if="!style.rules.length" class="empty">No rules yet. They are proposed every third edit, or press Learn.</p>
+          <h3>A rule of your own</h3>
+          <div class="composer"><input v-model="ownRule" placeholder="Never open a chapter with weather" @keyup.enter="ownRule && addOwnRule()" /><button class="pill solid" :disabled="!ownRule" @click="addOwnRule">Add</button></div>
+        </Panel>
+        <div class="stack span-5">
+          <Panel eyebrow="Measured from your edits" title="Your habits">
+            <ul class="list plain"><li v-for="(t, k) in style.tendencies" :key="k" style="font:400 16px/1.45 var(--prose)">{{ t.text }}</li></ul>
+            <p v-if="!style.tendencies.length" class="empty">Measured once you have rewritten two AI drafts ({{ style.edits.length }} so far).</p>
+          </Panel>
+          <Panel eyebrow="Teach it" title="Your own prose">
+            <textarea v-model="sample" style="min-height:180px;font:400 16px/1.65 var(--prose)" placeholder="Paste a page you wrote." />
+            <div class="row"><button class="pill solid" :disabled="!sample" @click="addSample">Add sample</button><button class="pill" :disabled="!!busy" @click="sheet">Distil style sheet</button></div>
+          </Panel>
+        </div>
+        <Panel :span="7" eyebrow="Profile" :title="`${style.samples.length} samples · ${style.edits.length} edits`">
+          <div v-if="style.stats" class="stat-grid">
+            <div class="stat"><b>{{ style.stats.avgSentenceLen }}</b><span>words per sentence</span></div>
+            <div class="stat"><b>{{ style.stats.avgParagraphLen }}</b><span>words per paragraph</span></div>
+            <div class="stat"><b>{{ Math.round(Number(style.stats.dialogueRatio) * 100) }}%</b><span>paragraphs with dialogue</span></div>
+            <div class="stat"><b>{{ style.stats.adverbRate }}</b><span>adverbs per 100 words</span></div>
+            <div class="stat"><b>{{ style.stats.commaPerSentence }}</b><span>commas per sentence</span></div>
+            <div class="stat"><b>{{ style.stats.words }}</b><span>words of yours</span></div>
+          </div>
+          <p v-else class="empty">Add a sample to measure your voice.</p>
+        </Panel>
+        <Panel :span="5" eyebrow="Distilled" title="Style sheet"><p style="white-space:pre-wrap;font:400 15px/1.6 var(--prose)">{{ style.sheet || 'None yet. Distil one from your samples.' }}</p></Panel>
+      </template>
+      <Panel v-else :span="12"><p class="empty">Opening your writer soul…</p></Panel>
+    </div>
+
+    <!-- VERIFY -->
+    <div v-else-if="tab === 'verify'" class="bento">
+      <Panel :span="12" eyebrow="Summary">
+        <template #actions><button class="pill" :disabled="!!busy" @click="verify">Re-run</button><Cta @click="openExport">Export Markdown</Cta></template>
+        <div class="stat-grid"><div v-for="c in reportCounts" :key="c.l" class="stat"><b>{{ c.n }}</b><span>{{ c.l }}</span></div></div>
+      </Panel>
+      <Panel v-for="(fs, key) in report ?? {}" :key="key" :span="fs.length > 2 ? 6 : 4" :eyebrow="String(key)">
+        <p v-if="!fs.length" class="ok">Clean</p>
+        <div v-for="(f, i) in fs" :key="i" class="finding" :class="'f-' + f.level"><code>{{ f.code }}</code><span>{{ f.message }}</span></div>
+      </Panel>
+    </div>
+  </main>
+
+  <div v-if="error" class="toast" role="alert">{{ error }} <button @click="error = ''">Dismiss</button></div>
 </template>
