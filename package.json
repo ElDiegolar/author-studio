@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run build -w @author-studio/core && npm run build -w @author-studio/cli -w @author-studio/mcp -w @author-studio/server && npm run build -w @author-studio/web",
     "typecheck": "npm run typecheck -ws --if-present",
@@ -11,9 +13,13 @@
     "dev:server": "npm run dev -w @author-studio/server",
     "dev:web": "npm run dev -w @author-studio/web",
     "author": "node packages/cli/dist/main.js",
-    "mcp": "node packages/mcp/dist/main.js"
+    "mcp": "node packages/mcp/dist/main.js",
+    "e2e": "npm run build && playwright test -c e2e/playwright.config.ts",
+    "e2e:live": "npm run build && E2E_LIVE=1 playwright test -c e2e/playwright.config.ts",
+    "test:all": "npm test && npm run e2e"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^22.10.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",

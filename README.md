@@ -44,6 +44,17 @@ AUTHOR_PROJECT=$AUTHOR_PROJECT node packages/server/dist/main.js     # http://12
 AUTHOR_PROJECT=$AUTHOR_PROJECT node packages/mcp/dist/main.js
 ```
 
+## Testing
+
+```bash
+npm test          # unit tests (core: souls, horizon, writer soul, verifier)
+npm run e2e       # end-to-end: every feature through the web app, CLI and MCP server
+npm run e2e:live  # the same flow against the real model in ~/.config/author-studio/env
+npm run test:all  # both
+```
+
+The end-to-end flow (`e2e/`) builds a fresh fixture novel in a temp directory, starts a deterministic fake model (`e2e/fake-model.mjs`, one canned answer per AI role) and runs the real server against it, then drives every room in Chromium: navigation, theme and phone menu; bible edits, world, hand-made / seeded / chat-built characters; scene cards, drafting, rewrite-and-save (writer soul edit), proofread, line edit, accept (facts + witnessing), agency drafting, AI outline; character room horizon and leak detection, mirror, decide-then-keep, soul snapshot/reset/restore; muse with agency; style samples, learning rules, This is me / Not me, own rules, style sheet; verify and Markdown export; the studio agent; and the CLI and MCP server end to end. Your real novels and writer soul are never touched. Failures leave a screenshot and trace in `test-results/`; the HTML report is in `e2e/report/`.
+
 ## Models
 
 Three providers: `anthropic` (API key), `claude-code` (headless `claude -p` on your Claude subscription, no key), `local` (llama-server).

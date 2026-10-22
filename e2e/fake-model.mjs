@@ -1,0 +1,94 @@
+/**
+ * A deterministic stand-in for an OpenAI-compatible model server (what the `local` provider talks to).
+ * It recognises each AI role by its system prompt and answers with valid, predictable output, so the
+ * end-to-end flow tests every feature without a GPU, an API key or flaky prose.
+ * Every request is recorded in `calls` so tests can assert which roles ran.
+ */
+import http from 'node:http';
+
+const DRAFT = [
+  'The four-way stop sat where the port road met the coast road, a square of wet tarmac under one amber light. Mara waited slowly and carefully at the white line.',
+  '"We should not be here," Jonah said quietly, glancing nervously over his shoulder at the gate.',
+  '"I know," Mara said softly. "We will leave very soon." She looked at the the ledger on the seat and did not touch it.',
+  'The van came across from the right, white and square-backed, its headlamps still on against the grey. It had the road. It did not need to slow.',
+  'She stayed until the ambulance came, and the ledger was still on the seat when she got back to the car.',
+].join('\n\n');
+
+const ids = (text) => [...new Set(text.match(/\[(c_[a-z0-9]+)\]/g)?.map((m) => m.slice(1, -1)) ?? [])];
+const lastUser = (messages) => [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+
+/** Returns the reply text for one chat-completions request. */
+export function answer(system, messages) {
+  const user = messages.map((m) => m.content).join('\n');
+  const last = lastUser(messages);
+  const json = (v) => JSON.stringify(v);
+  // Order matters: more specific prompts first.
+  if (system.startsWith('You are the studio agent')) {
+    if (last.startsWith('RESULT of')) return json({ thought: 'done', actions: [], reply: 'The book has its cast and scenes; nothing needed changing.', done: true });
+    return json({ thought: 'look at the book first', actions: [{ tool: 'bible', args: {} }], reply: 'Reading the book…', done: false });
+  }
+  if (system.startsWith('You compare AI drafts')) return json({ rules: [
+    { text: 'Drop the dialogue tag when the speaker is clear', evidence: '"We should not be here," Jonah said quietly -> "We should not be here."' },
+    { text: 'Open scenes on a noun fragment', evidence: 'The four-way stop sat where... -> Four-way stop.' },
+  ] });
+  if (system.startsWith('You study samples')) return 'Short declarative sentences. Fragments for setting. Dialogue mostly untagged. No adverbs.';
+  if (system.startsWith('You are drafting one scene')) return DRAFT;
+  if (system.startsWith('You are a line editor')) return `${last.split('PASSAGE:\n')[1] ?? last}`.replace(/slowly and carefully /, '').trim();
+  if (system.startsWith('You ARE this person')) {
+    if (/greyhaven/i.test(last)) return 'Greyhaven? I have heard the name. They say the harbour there never sleeps.';
+    return 'Not yet. Ask me again when the boats are back.';
+  }
+  if (system.startsWith('You extract DURABLE facts')) return json({ facts: [
+    { subject: 'mara', predicate: 'owns', object: 'the ledger', text: 'Mara keeps the ledger on the passenger seat', single: false },
+    { subject: 'jonah', predicate: 'relationship to mara', object: 'brother', text: 'Jonah is Mara\'s brother', single: true },
+  ] });
+  if (system.startsWith('You summarise a scene')) return json({ summary: 'Stopped at the four-way stop and stayed with the injured driver.', learned: ['the van driver was trapped'], feeling: 'shaken but steady' });
+  if (system.startsWith('You are a muse')) {
+    const cs = ids(user);
+    return json({ ideas: [
+      { kind: 'complication', idea: 'The ledger goes missing while Mara is with the driver.', growsFrom: 'Mara\'s private ledger', characters: cs.slice(0, 1) },
+      { kind: 'character-beat', idea: 'Jonah pretends not to recognise the van.', growsFrom: 'Jonah\'s secret', characters: cs.slice(1, 2) },
+      { kind: 'dialogue', idea: '"You counted the boats again." "Someone has to."', growsFrom: 'Mara\'s habit of counting', characters: cs },
+    ] });
+  }
+  if (system.startsWith('You are a proofreader')) return json({ issues: [{ original: 'the the', fix: 'the', reason: 'repeated word' }] });
+  if (system.startsWith('You design original characters')) return json({
+    name: 'Constance Harrow', role: 'lighthouse keeper', summary: 'Keeper of the Scarrow Point light; stopped every clock in 1987.', want: 'to see the Harbour Board answer for her brother', need: 'to let the light go out', wound: 'her brother drowned on a night she let the lamp fail', arc: 'from frozen grief to release',
+    voiceSample: 'Sit where the lamp can see your face. I have never trusted a man in shadow.', secrets: ['she was paid to let the lamp fail'],
+    traits: [{ key: 'habit', value: 'winds a stopped clock every evening' }, { key: 'fear', value: 'silence after a storm' }],
+  });
+  if (system.startsWith('You build a full psychological mirror')) return json({
+    values: 'Order, then loyalty, then the truth.', fears: 'Being caught unprepared.', defenses: 'Counts things instead of feeling.', attachment: 'Avoidant; tests people before trusting them.', moralLines: 'Will not lie on an official record.',
+    decisionStyle: 'Slow, head first, then gut.', selfImage: 'The one who keeps things straight.', blindSpot: 'Her brother.', breakingPoint: 'Proof she was used.', healing: 'Being believed without proof.',
+  });
+  if (system.startsWith('You are a fictional character deciding')) return json({ decision: 'She stops the car and goes to the van.', reasoning: 'The ledger can wait; he cannot.', rejected: ['Drive on to the shed'], emotion: 'resolve', cost: 'She misses the boat.' });
+  if (system.startsWith('You help a novelist create or edit a character')) return json({
+    reply: 'A harbour pilot who owes everyone money. What does he want from Mara?',
+    edits: [{ op: 'set', field: 'name', value: 'Tobin Rake' }, { op: 'set', field: 'role', value: 'harbour pilot' }, { op: 'trait', key: 'habit', value: 'whistles when lying' }],
+    ready: true,
+  });
+  if (system.startsWith('You are a story architect')) {
+    const cs = ids(user);
+    return json({ scenes: [{ chapter: 3, title: 'The Pilot\'s Debt', pov: cs[0] ?? 'c_x', location: 'the quay', time: 'dawn', goal: 'collect the debt', conflict: 'Jonah got there first', outcome: 'Mara learns the price', characters: cs.slice(0, 2), targetWords: 900 }] });
+  }
+  return 'OK';
+}
+
+export function startFakeModel(port = Number(process.env.FAKE_MODEL_PORT ?? 8799)) {
+  const calls = [];
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/calls') { res.end(JSON.stringify(calls)); return; }
+      const j = body ? JSON.parse(body) : { messages: [] };
+      const system = j.messages.find((m) => m.role === 'system')?.content ?? '';
+      const rest = j.messages.filter((m) => m.role !== 'system');
+      const content = answer(system, rest);
+      calls.push(system.slice(0, 40));
+      res.end(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }));
+    });
+  });
+  return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve({ server, calls, url: `http://127.0.0.1:${port}/v1` })));
+}
