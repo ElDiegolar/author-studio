@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { api, idle, open, panel, run } from './helpers';
 
 test('muse with agency: characters decide (scratch), ideas grow from the souls', async ({ page }) => {
-  await open(page, 'Muse');
+  await open(page, 'Ideas');
   const before = (await api(`/characters/${run().ids.jonah}/state`)).decisions.length;
   await page.getByPlaceholder(/Optional/).fill('Mara and Jonah meet at the quay the night the Albatross leaves.');
   await page.locator('label.check', { hasText: 'Jonah Voss' }).locator('input').check();
@@ -16,7 +16,7 @@ test('muse with agency: characters decide (scratch), ideas grow from the souls',
 });
 
 test('muse without a scenario still finds pressure points', async ({ page }) => {
-  await open(page, 'Muse');
+  await open(page, 'Ideas');
   await page.getByRole('button', { name: 'Throw me ideas' }).click();
   await idle(page);
   await expect(panel(page, /ways in/).locator('.idea').first()).toBeVisible();

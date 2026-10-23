@@ -195,6 +195,12 @@ label { display: block; font: 500 11px/1 var(--ui); letter-spacing: 0.04em; colo
 .idea-body { font: 400 17px/1.5 var(--prose); margin: 8px 0 6px; }
 pre.json { white-space: pre-wrap; font: 400 12px/1.5 var(--mono); color: var(--muted); margin: 0; max-height: 320px; overflow: auto; }
 details summary { cursor: pointer; font: 500 12px/1 var(--ui); color: var(--muted); padding: 8px 0; }
+details.more { margin: 4px 0 10px; }
+details.more summary { font-size: 13px; padding: 10px 0; }
+details.more summary:hover { color: var(--ink-2); }
+.save { font: 400 13px/1 var(--ui); color: var(--muted); transition: color 300ms var(--spring); }
+.save.unsaved { color: var(--ink-2); }
+.save.saved { color: var(--muted); }
 
 .diff p { font: 400 16px/1.7 var(--prose); white-space: pre-wrap; }
 .diff ins { background: var(--ins); text-decoration: none; border-radius: 3px; }

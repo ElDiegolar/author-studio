@@ -19,6 +19,9 @@ const drag = ref(false);
 const pv = ref<Preview | null>(null);
 const opts = ref({ title: '', genre: '', cast: new Set<string>(), extra: '', useAi: true, continuity: false });
 const job = ref<Job | null>(null);
+/** The AI nudge can be waved away for good on this machine. */
+const nudge = ref((() => { try { return localStorage.getItem('author-ai-nudge') !== 'off'; } catch { return true; } })());
+function hideNudge() { nudge.value = false; try { localStorage.setItem('author-ai-nudge', 'off'); } catch { /* private window */ } }
 const FORMATS = 'Word, OpenDocument, RTF, Markdown, text, HTML, EPUB, PDF, Final Draft, Scrivener (zip the .scriv folder)';
 const ACCEPT = '.docx,.odt,.rtf,.md,.markdown,.txt,.text,.html,.htm,.xhtml,.epub,.pdf,.fdx,.zip';
 
@@ -69,12 +72,12 @@ const ago = (iso: string) => { const d = (Date.now() - new Date(iso).getTime()) 
 
 <template>
   <div class="bento">
-    <div v-if="!aiOn" class="span-12 ai-off" role="note">
+    <div v-if="!aiOn && nudge" class="span-12 ai-off" role="note">
       <span><b>Writing by hand.</b> Everything works without AI. Want help drafting, importing and talking to your characters? Add your Anthropic key, Claude Code or a local model.</span>
-      <button class="pill solid" @click="emit('settings')">Choose an AI</button>
+      <span class="row"><button class="pill solid" @click="emit('settings')">Choose an AI</button><button class="pill" @click="hideNudge">Not now</button></span>
     </div>
     <Panel :span="7" eyebrow="On this machine" :title="lib ? `${lib.projects.length} novel${lib.projects.length === 1 ? '' : 's'}` : 'Your novels'">
-      <p class="muted">Stored as plain files you own in <code>{{ lib?.dir }}</code>. Nothing is uploaded.</p>
+      <p class="muted">Saved on this computer as plain files you own. Nothing is uploaded. <span v-if="lib" :title="lib.dir">Folder: <code>{{ lib.dir.split(/[\\/]/).filter(Boolean).slice(-2).join('/') }}</code></span></p>
       <ul class="list novels">
         <li v-for="p in lib?.projects ?? []" :key="p.dir" :class="{ on: p.dir === lib?.current }" @click="openNovel(p.dir)">
           <div class="who"><span class="avatar">{{ p.title.slice(0, 1).toUpperCase() }}</span>
@@ -87,7 +90,7 @@ const ago = (iso: string) => { const d = (Date.now() - new Date(iso).getTime()) 
     <div class="stack span-5">
       <Panel eyebrow="From scratch" title="New novel">
         <label>Title</label><input v-model="draft.title" placeholder="The Salt Road" @keyup.enter="draft.title && create()" />
-        <div class="field-row"><div><label>Genre</label><input v-model="draft.genre" placeholder="Literary thriller" /></div><div><label>Author name</label><input v-model="draft.author" placeholder="For title pages" /></div></div>
+        <div class="field-row"><div><label>Genre <span class="muted">· optional</span></label><input v-model="draft.genre" placeholder="Literary thriller" /></div><div><label>Your name <span class="muted">· optional</span></label><input v-model="draft.author" placeholder="For the title page" /></div></div>
         <Cta :disabled="!draft.title || !!busy" @click="create">Start writing</Cta>
       </Panel>
       <Panel eyebrow="Bring your book" title="Import a manuscript">

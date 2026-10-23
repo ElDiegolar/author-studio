@@ -18,6 +18,8 @@ import { ruleIdOf } from './writer/events.js';
 
 /** After this many unlearned edits, saving author text runs a learning pass on its own. */
 const AUTO_LEARN_EVERY = 3;
+/** Autosaves within this long of a version's first save fold into it; after that a new version begins. */
+const AUTOSAVE_WINDOW_MS = 15 * 60_000;
 
 export class Studio {
   constructor(readonly store: FileStore, public ai: AiConfig = defaultAiConfig(), readonly writerStore: WriterStore = WriterStore.forWriter('default')) {}
@@ -171,19 +173,26 @@ export class Studio {
   }
 
   /**
-   * The author's own text for a scene. If it rewrites an AI draft, the draft/final pair goes to the
-   * writer soul, and every few such edits a learning pass proposes rules (best effort: a model
-   * failure never loses the author's text).
+   * The author's own text for a scene. Autosaves fold into the latest author version for a while
+   * (AUTOSAVE_WINDOW_MS), so typing does not mint a version per pause, and never teach the writer
+   * soul: a half-finished rewrite is not evidence. A settled save (leaving the scene, marking it
+   * done) records the rewrite of the last AI draft once, and every few such edits a learning pass
+   * proposes rules (best effort: a model failure never loses the author's text).
    */
-  async saveAuthorText(sceneId: string, text: string, opts: { autoLearn?: boolean } = {}): Promise<{ version: SceneVersion; findings: Finding[]; proposed?: WriterRule[] }> {
+  async saveAuthorText(sceneId: string, text: string, opts: { autoLearn?: boolean; autosave?: boolean } = {}): Promise<{ version: SceneVersion; findings: Finding[]; proposed?: WriterRule[] }> {
     const bible = await this.bible();
     const scene = mustScene(bible, sceneId);
-    const prev = await this.store.latest(sceneId);
-    const version = await this.store.saveVersion(sceneId, text, 'author');
+    const all = await this.store.versions(sceneId);
+    const prev = all[all.length - 1];
+    const fold = !!opts.autosave && prev?.source === 'author' && Date.now() - Date.parse(prev.createdAt) < AUTOSAVE_WINDOW_MS;
+    const version = prev?.source === 'author' && prev.text === text ? prev : await this.store.saveVersion(sceneId, text, 'author', { replace: fold });
     if (scene.status === 'card') await this.store.updateScene({ ...scene, status: 'drafted' });
     const findings = verifyScene(bible, scene, text);
-    if (!(prev?.source === 'ai' && text !== prev.text && text.length > 400)) return { version, findings };
-    const w = await this.recordEdit(prev.text, text, sceneId);
+    if (opts.autosave) return { version, findings };
+    const draft = [...all].reverse().find((v) => v.source === 'ai');
+    if (!draft || draft.text === text || text.length <= 400) return { version, findings };
+    if ((await this.writer(null)).edits.some((e) => e.sceneId === sceneId && e.draft === draft.text)) return { version, findings };
+    const w = await this.recordEdit(draft.text, text, sceneId);
     if (opts.autoLearn === false || w.unlearnedEdits < AUTO_LEARN_EVERY) return { version, findings };
     try { return { version, findings, proposed: (await this.learnFromEdits()).proposed }; }
     catch (e) { return { version, findings: [...findings, { level: 'warn', code: 'writer.learn', message: `could not learn from edits yet: ${(e as Error).message}` }] }; }

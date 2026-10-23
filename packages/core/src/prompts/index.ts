@@ -46,7 +46,7 @@ export function bibleBrief(b: Bible): string {
 export function sceneCard(s: Scene, chars: Character[]): string {
   return [
     `Scene ${s.order} (chapter ${s.chapter}): ${s.title}`,
-    `POV: ${chars.find((c) => c.id === s.pov)?.name ?? s.pov}`,
+    `POV: ${chars.find((c) => c.id === s.pov)?.name ?? (s.pov || 'not set')}`,
     `Location: ${s.location}. Time: ${s.time}.`,
     `Present: ${s.characters.map((id) => chars.find((c) => c.id === id)?.name ?? id).join(', ')}`,
     `Goal: ${s.goal}`,

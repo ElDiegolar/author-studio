@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { open } from './helpers';
 
-const ROOMS: [string, RegExp][] = [['Studio', /The Test Road/], ['Bible', /bible/i], ['Scenes', /Scene by scene/], ['Characters', /Talk to them/], ['Muse', /Throw me ideas/], ['Style', /Your voice/], ['Verify', /Who is right/]];
+const ROOMS: [string, RegExp][] = [['Studio', /The Test Road/], ['Write', /Scene by scene/], ['Read', /Read it through/], ['Story', /The story/], ['Characters', /Talk to them/], ['Ideas', /Throw me ideas/], ['Style', /Your voice/], ['Check', /Check the book/]];
 
 test('every room opens from the island nav with its own heading', async ({ page }) => {
   await open(page, 'Studio');
@@ -30,7 +30,7 @@ test('phone: hamburger opens the sheet, navigates, and the layout is one column'
   await expect(page.locator('.links')).toBeHidden();
   await page.getByRole('button', { name: 'Menu' }).click();
   await expect(page.locator('.island')).toHaveClass(/open/);
-  await page.locator('.sheet button', { hasText: 'Scenes' }).click();
+  await page.locator('.sheet button', { hasText: 'Write' }).click();
   await expect(page.locator('.sheet')).toHaveCount(0);
   await expect(page.locator('.hero h1')).toHaveText(/Scene by scene/);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

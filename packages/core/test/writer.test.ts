@@ -167,6 +167,26 @@ describe('studio with a writer soul', () => {
     expect(st.edits[0]!.draft).toBe(DRAFTS[0]!.repeat(2));
   });
 
+  it('autosave folds into one version and never teaches; settling records the rewrite once', async () => {
+    const w = new WriterStore(path.join(tmp, 'writers', 'auto'));
+    const s = await project('bookAuto', w);
+    const scene = (await s.bible()).scenes[0]!;
+    await s.store.saveVersion(scene.id, DRAFTS[0]!.repeat(2), 'ai');
+    await s.saveAuthorText(scene.id, FINALS[0]!, { autosave: true });
+    await s.saveAuthorText(scene.id, FINALS[0]!.repeat(5), { autosave: true });
+    const vs = await s.store.versions(scene.id);
+    expect(vs.map((v) => v.source)).toEqual(['ai', 'author']);
+    expect(vs[1]!.text).toBe(FINALS[0]!.repeat(5));
+    expect((await s.writer()).edits).toHaveLength(0);
+    // Settling the same text adds no version but hands the rewrite to the writer soul, once.
+    await s.saveAuthorText(scene.id, FINALS[0]!.repeat(5), { autoLearn: false });
+    await s.saveAuthorText(scene.id, FINALS[0]!.repeat(5), { autoLearn: false });
+    expect(await s.store.versions(scene.id)).toHaveLength(2);
+    const st = await s.writer();
+    expect(st.edits).toHaveLength(1);
+    expect(st.edits[0]!.draft).toBe(DRAFTS[0]!.repeat(2));
+  });
+
   it('learns rules every third edit, and the author confirms or rejects them', async () => {
     const w = new WriterStore(path.join(tmp, 'writers', 'w2'));
     const s = await project('book2', w);

@@ -129,19 +129,17 @@ test('manual mode: No AI hides every AI action; the book still works; then AI co
   await expect(page.getByText('AI is off: manual mode.')).toBeVisible();
   const rooms = await page.locator('.links button').allTextContents();
   expect(rooms).not.toContain('Studio');
-  expect(rooms).not.toContain('Muse');
-  await page.locator('.links button', { hasText: 'Scenes' }).click();
-  await panel(page, 'Scenes').locator('li').first().click();
+  expect(rooms).not.toContain('Ideas');
+  await page.locator('.links button', { hasText: 'Write' }).click();
+  await panel(page, 'Scenes').locator('li:not(:has(.status.accepted))').first().click();
   await expect(page.getByRole('button', { name: 'Draft with AI' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'AI outline…' })).toHaveCount(0);
-  await expect(page.getByText('Manual mode: write the scene yourself.')).toBeVisible();
   // accepting still works without AI
   await page.locator('textarea.prose').fill('Written by hand. '.repeat(40));
-  await page.getByRole('button', { name: 'Save my text' }).click();
-  await idle(page);
-  await page.getByRole('button', { name: /Accept/ }).click();
+  await expect(page.locator('.save')).toContainText('Saved');
+  await page.getByRole('button', { name: 'Mark done' }).click();
   await expect(page.locator('.finding', { hasText: 'Accepted without AI' })).toBeVisible();
-  await page.locator('.links button', { hasText: 'Bible' }).click();
+  await page.locator('.links button', { hasText: 'Story' }).click();
   await expect(page.getByText('Seed a character')).toHaveCount(0);
   // restore the fake model so later runs of the suite keep working
   const r = run();

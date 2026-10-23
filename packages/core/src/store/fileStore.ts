@@ -132,12 +132,15 @@ export class FileStore {
     const v = await this.versions(sceneId);
     return v[v.length - 1];
   }
-  async saveVersion(sceneId: string, text: string, source: 'ai' | 'author'): Promise<SceneVersion> {
+  /** `replace` overwrites the latest version in place (same number, same start time): autosave uses it so typing does not mint a version per keystroke. */
+  async saveVersion(sceneId: string, text: string, source: 'ai' | 'author', opts: { replace?: boolean } = {}): Promise<SceneVersion> {
     const d = path.join(this.dir, 'manuscript', sceneId);
     await fs.mkdir(d, { recursive: true });
     const prev = await this.versions(sceneId);
-    const version = (prev[prev.length - 1]?.version ?? 0) + 1;
-    const createdAt = new Date().toISOString();
+    const last = prev[prev.length - 1];
+    const keep = opts.replace && last ? last : null;
+    const version = keep ? keep.version : (last?.version ?? 0) + 1;
+    const createdAt = keep?.createdAt || new Date().toISOString();
     await fs.writeFile(path.join(d, `v${version}.md`), `<!-- ${JSON.stringify({ source, createdAt })} -->\n${text}`);
     return { sceneId, version, text, source, createdAt };
   }

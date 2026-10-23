@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { api, idle, open, panel, run } from './helpers';
 
 test('premise and voice edits persist to project files', async ({ page }) => {
-  await open(page, 'Bible');
+  await open(page, 'Story');
   const p = panel(page, 'Premise & voice');
   await p.locator('label:has-text("Tone") + input').fill('spare and cold');
   await p.locator('label:has-text("Tone") + input').blur();
@@ -13,7 +13,7 @@ test('premise and voice edits persist to project files', async ({ page }) => {
 });
 
 test('add a world entry', async ({ page }) => {
-  await open(page, 'Bible');
+  await open(page, 'Story');
   const w = panel(page, /entries/);
   await w.locator('select').first().selectOption('faction');
   await w.getByPlaceholder('Name').fill('The Harbour Board');
@@ -24,20 +24,20 @@ test('add a world entry', async ({ page }) => {
 });
 
 test('fill the sheet by hand and add a character (with a base soul)', async ({ page }) => {
-  await open(page, 'Bible');
-  const s = panel(page, 'Fill the sheet directly');
+  await open(page, 'Story');
+  const s = panel(page, 'Add a character');
   await s.locator('label:has-text("Name") + input').fill('Elias Thorne');
   await s.locator('label:has-text("Role") + input').fill('harbour master');
-  await s.locator('label:has-text("Summary") + textarea').fill('Sixty, dying slowly, keeps the keys.');
+  await s.locator('label:has-text("Who are they?") + textarea').fill('Sixty, dying slowly, keeps the keys.');
   await s.getByRole('button', { name: 'Add character' }).click();
   await idle(page);
-  await expect(panel(page, /souls/)).toContainText('Elias Thorne');
+  await expect(panel(page, /\d+ characters?$/)).toContainText('Elias Thorne');
   const elias = (await api('/bible')).characters.find((c: { name: string }) => c.name === 'Elias Thorne');
   expect(await api(`/characters/${elias.id}/souls`)).toContain('base');
 });
 
 test('a seeded proposal fills the sheet; nothing is saved until Add; edits and dropped traits are honoured', async ({ page }) => {
-  await open(page, 'Bible');
+  await open(page, 'Story');
   const before = (await api('/bible')).characters.length;
   const seed = panel(page, 'Seed a character');
   await seed.getByPlaceholder(/Deckard/).fill('a Miss Havisham figure who keeps the lighthouse');
@@ -61,11 +61,11 @@ test('a seeded proposal fills the sheet; nothing is saved until Add; edits and d
   expect(Object.keys(st.traits)).not.toContain(dropped);
   for (const k of keys.slice(1)) expect(Object.keys(st.traits)).toContain(k);
   expect(keys.length).toBe(n);
-  await expect(panel(page, 'Fill the sheet directly')).toBeVisible(); // form resets
+  await expect(panel(page, 'Add a character')).toBeVisible(); // form resets
 });
 
 test('build a character by talking, review proposed edits, apply to soul', async ({ page }) => {
-  await open(page, 'Bible');
+  await open(page, 'Story');
   const b = panel(page, 'A new character');
   await b.getByPlaceholder(/harbour pilot/).fill('a harbour pilot who owes everyone money');
   await b.getByRole('button', { name: 'Send' }).click();

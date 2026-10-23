@@ -19,14 +19,14 @@ function applyTheme() { document.documentElement.dataset.theme = theme.value; }
 function toggleTheme() { theme.value = theme.value === 'dark' ? 'light' : 'dark'; applyTheme(); try { localStorage.setItem('author-theme', theme.value); } catch { /* private window */ } }
 applyTheme();
 const TABS: { id: Tab; label: string; eyebrow: string; title: string; lede: string }[] = [
-  { id: 'studio', label: 'Studio', eyebrow: 'Studio', title: '', lede: 'Say what you want done. The agent reads and writes the book; every other room is the same book by hand.' },
-  { id: 'bible', label: 'Bible', eyebrow: 'The book as a database', title: 'The <em>bible</em>', lede: 'Premise, world and cast. Characters are souls: what you write here is where their lives begin.' },
-  { id: 'scenes', label: 'Scenes', eyebrow: 'Drafting', title: 'Scene by <em>scene</em>', lede: 'The AI proposes, you dispose. Rewrite a draft and save it: the difference teaches your writer soul.' },
-  { id: 'read', label: 'Read', eyebrow: 'Reader', title: 'Read it <em>through</em>', lede: 'Your book the way a reader will meet it, page by page. Export the whole work when it is ready.' },
-  { id: 'room', label: 'Characters', eyebrow: 'Character room', title: 'Talk to <em>them</em>', lede: 'Slide the horizon to meet a character as they were at any scene. They know only what they have lived.' },
-  { id: 'muse', label: 'Muse', eyebrow: "Writer's block", title: 'Throw me <em>ideas</em>', lede: 'Pressure points found in the souls. Let some characters decide for themselves; nothing here is saved.' },
-  { id: 'style', label: 'Style', eyebrow: 'Writer soul', title: 'Your <em>voice</em>', lede: 'Learned from your own prose and from every AI draft you rewrite. Tell it what is you and what is not.' },
-  { id: 'verify', label: 'Verify', eyebrow: 'Deterministic checks', title: 'Who is <em>right</em>', lede: 'No model decides here: continuity, timeline, point of view, length, and whether a draft still sounds like you.' },
+  { id: 'studio', label: 'Studio', eyebrow: 'Studio', title: '', lede: 'Say what you want done, in plain words. The agent reads and writes the book for you; every other room does the same things by hand.' },
+  { id: 'scenes', label: 'Write', eyebrow: 'Write', title: 'Scene by <em>scene</em>', lede: '' },
+  { id: 'read', label: 'Read', eyebrow: 'Read', title: 'Read it <em>through</em>', lede: '' },
+  { id: 'bible', label: 'Story', eyebrow: 'Story', title: 'The <em>story</em>', lede: 'What the book is about, who is in it, and the world it happens in.' },
+  { id: 'room', label: 'Characters', eyebrow: 'Characters', title: 'Talk to <em>them</em>', lede: 'Meet a character as they were at any point in the book. They only know what they have lived so far.' },
+  { id: 'muse', label: 'Ideas', eyebrow: 'Stuck?', title: 'Throw me <em>ideas</em>', lede: 'Ideas that grow out of your characters. Nothing here changes the book unless you use it.' },
+  { id: 'style', label: 'Style', eyebrow: 'Your style', title: 'Your <em>voice</em>', lede: 'What the studio has learned about how you write, from your own pages and from every AI draft you rewrite. You decide what sticks.' },
+  { id: 'verify', label: 'Check', eyebrow: 'Check', title: 'Check the <em>book</em>', lede: 'Automatic checks for continuity, timeline, point of view and length. No AI decides anything here.' },
 ];
 const PLACES: Record<'library' | 'settings', { eyebrow: string; title: string; lede: string }> = {
   library: { eyebrow: 'Library', title: 'Your <em>novels</em>', lede: 'Everything lives on this machine as files you own. Open a novel, start a new one, or import a manuscript you already have.' },
@@ -35,13 +35,19 @@ const PLACES: Record<'library' | 'settings', { eyebrow: string; title: string; l
 const meta = computed(() => (tab.value === 'library' || tab.value === 'settings' ? PLACES[tab.value] : TABS.find((t) => t.id === tab.value)!));
 /** Rooms of the open novel; the AI-only rooms are hidden in manual mode. */
 const rooms = computed(() => TABS.filter((t) => aiOn.value || !['studio', 'muse'].includes(t.id)));
-function go(t: View) { menu.value = false; tab.value = t; if (t === 'style') loadStyle(); if (t === 'verify') verify(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function go(t: View) {
+  menu.value = false;
+  if (tab.value === 'scenes' && t !== 'scenes') void settle();
+  tab.value = t; if (t === 'style') loadStyle(); if (t === 'verify') verify();
+  if (t === 'scenes' && !sceneId.value) openNext();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 const aiOn = ref(true);
-async function opened() { await load(); go(aiOn.value ? 'studio' : 'scenes'); }
+async function opened() { sceneId.value = ''; text.value = ''; lastSaved = ''; saveState.value = ''; await load(); go(aiOn.value ? 'studio' : 'scenes'); }
 function editScene(id: string) { go('scenes'); void openScene(id); }
 const initials = (name: string) => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 function ask(q: string, def: string): string | undefined { return window.prompt(q, def) ?? undefined; }
-const SUGGEST = ['Set the premise: …', 'Add a character like a burnt-out harbour pilot', 'Outline three chapters', 'Draft scene 2 and let Mara decide for herself', 'What does Jonah know as of scene 3?', "I'm stuck on the breakfast scene", 'Export the book'];
+const SUGGEST = ['Set the premise: …', 'Add a character like a burnt-out harbour pilot', 'Outline three chapters', 'Draft the next scene', 'What does each character know so far?', "I'm stuck on this chapter", 'Check the book for continuity problems'];
 const aHistory = ref<{ role: 'user' | 'assistant'; content: string; events?: { kind: string; text: string }[] }[]>([]); const aMsg = ref('');
 async function agentSend() { const m = aMsg.value; aMsg.value = ''; aHistory.value.push({ role: 'user', content: m }); const r = await run('agent working', () => api<{ reply: string; events: { kind: string; text: string }[] }>('/agent', 'POST', { history: aHistory.value.slice(0, -1).map(({ role, content }) => ({ role, content })), message: m })); if (r) { aHistory.value.push({ role: 'assistant', content: r.reply, events: r.events.filter((e) => e.kind === 'action') }); await load(); } }
 const bible = ref<Bible | null>(null);
@@ -84,6 +90,7 @@ async function seed() {
   newChar.value = { ...blankChar(), ...rest, secrets: secrets.join('; ') };
   seedTraits.value = traits;
 }
+function toSheet() { const el = document.getElementById('new-character'); el?.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => el?.querySelector('input')?.focus(), 400); }
 function discardSeed() { newChar.value = blankChar(); seedTraits.value = null; }
 async function savePremise() { if (bible.value) await run('saving', () => api('/premise', 'PUT', bible.value!.premise)); }
 async function saveProject() { if (bible.value) await run('saving', () => api('/project', 'PUT', bible.value!.project)); }
@@ -101,14 +108,51 @@ const sceneId = ref(''); const scene = computed(() => bible.value?.scenes.find((
 const versions = ref<Version[]>([]); const text = ref(''); const findings = ref<Finding[]>([]); const draftBase = ref<string | null>(null);
 const draftAgency = ref<string[]>([]);
 const newScene = ref({ title: '', chapter: 1, pov: '', characters: [] as string[], goal: '', conflict: '', outcome: '', location: '', time: '', targetWords: 1500 });
-async function openScene(id: string) { sceneId.value = id; versions.value = await api<Version[]>(`/scenes/${id}/versions`); text.value = versions.value[versions.value.length - 1]?.text ?? ''; draftBase.value = null; findings.value = []; }
-async function addScene() { await run('adding', () => api('/scenes', 'POST', newScene.value)); await load(); }
-async function draft(agency: boolean) { const r = await run(agency ? 'characters deciding, then drafting' : 'drafting', () => api<{ version: Version; findings: Finding[]; decisions?: { name: string; decision: string; emotion: string }[] }>(`/scenes/${sceneId.value}/draft`, 'POST', { agency: agency ? draftAgency.value : false })); if (r) { draftBase.value = r.version.text; text.value = r.version.text; findings.value = [...(r.decisions ?? []).map((d) => ({ level: 'ok', code: 'decided', message: `${d.name}: ${d.decision} (${d.emotion})` })), ...r.findings]; versions.value = await api(`/scenes/${sceneId.value}/versions`); await load(); } }
-async function saveText() { const r = await run('saving', () => api<{ version: Version; findings: Finding[] }>(`/scenes/${sceneId.value}/text`, 'POST', { text: text.value })); if (r) { findings.value = r.findings; draftBase.value = null; versions.value = await api(`/scenes/${sceneId.value}/versions`); await load(); } }
-async function accept() { const r = await run('accepting', () => api<{ facts: unknown[]; witnessed: string[]; findings: Finding[] }>(`/scenes/${sceneId.value}/accept`, 'POST')); if (r) { findings.value = [{ level: 'ok', code: 'accepted', message: `${r.facts.length} facts, witnessed by ${r.witnessed.join(', ')}` }, ...r.findings]; await load(); } }
+const lastChapter = computed(() => (bible.value?.scenes ?? []).reduce((m, s) => Math.max(m, s.chapter), 1));
+async function openScene(id: string) { await settle(); sceneId.value = id; versions.value = await api<Version[]>(`/scenes/${id}/versions`); text.value = versions.value[versions.value.length - 1]?.text ?? ''; lastSaved = text.value; saveState.value = text.value ? 'saved' : ''; draftBase.value = null; findings.value = []; proof.value = []; }
+/** Entering the writing room: the first unfinished scene, so the page is ready to type on. */
+function openNext() { newScene.value = blankScene(lastChapter.value); const all = [...(bible.value?.scenes ?? [])].sort((a, b) => a.order - b.order); const s = all.find((x) => x.status !== 'accepted') ?? all[all.length - 1]; if (s) void openScene(s.id); }
+const blankScene = (chapter: number) => ({ title: '', chapter, pov: '', characters: [] as string[], goal: '', conflict: '', outcome: '', location: '', time: '', targetWords: 1500 });
+async function addScene() {
+  const s = await run('adding', () => api<Scene>('/scenes', 'POST', newScene.value));
+  if (!s) return;
+  newScene.value = blankScene(s.chapter); await load(); await openScene(s.id);
+}
+// Everything typed is saved a moment after you pause. Leaving the scene settles it: that is when a
+// rewrite of an AI draft is handed to the writer soul.
+const saveState = ref<'' | 'unsaved' | 'saving' | 'saved'>('');
+let lastSaved = ''; let unsettled = false; let saveTimer: ReturnType<typeof setTimeout> | undefined;
+function typed() { saveState.value = 'unsaved'; clearTimeout(saveTimer); saveTimer = setTimeout(() => void autosave(), 1200); }
+async function autosave() {
+  const id = sceneId.value; const t = text.value;
+  if (!id || t === lastSaved) { if (t === lastSaved) saveState.value = t ? 'saved' : ''; return; }
+  saveState.value = 'saving';
+  try {
+    const r = await api<{ version: Version; findings: Finding[] }>(`/scenes/${id}/text`, 'POST', { text: t, autosave: true });
+    if (id !== sceneId.value) return;
+    lastSaved = t; unsettled = true; findings.value = r.findings;
+    saveState.value = text.value === t ? 'saved' : 'unsaved';
+    if (scene.value?.status === 'card' || versions.value.length === 0) { versions.value = await api(`/scenes/${id}/versions`); await load(); }
+  } catch (e) { saveState.value = 'unsaved'; error.value = `Not saved yet: ${(e as Error).message}`; }
+}
+async function settle() {
+  clearTimeout(saveTimer);
+  const id = sceneId.value; const t = text.value;
+  if (!id || (!unsettled && t === lastSaved)) return;
+  try { await api(`/scenes/${id}/text`, 'POST', { text: t }); lastSaved = t; unsettled = false; if (id === sceneId.value) saveState.value = 'saved'; }
+  catch (e) { error.value = `Not saved yet: ${(e as Error).message}`; }
+}
+// Closing the window mid-sentence still keeps the sentence.
+window.addEventListener('pagehide', () => {
+  if (sceneId.value && (unsettled || text.value !== lastSaved)) navigator.sendBeacon(`/api/scenes/${sceneId.value}/text`, new Blob([JSON.stringify({ text: text.value })], { type: 'application/json' }));
+});
+const words = computed(() => (text.value.match(/\S+/g) ?? []).length);
+const STATUS: Record<string, string> = { card: 'not started', drafted: 'in progress', accepted: 'done' };
+async function draft(agency: boolean) { await settle(); const r = await run(agency ? 'characters deciding, then drafting' : 'drafting', () => api<{ version: Version; findings: Finding[]; decisions?: { name: string; decision: string; emotion: string }[] }>(`/scenes/${sceneId.value}/draft`, 'POST', { agency: agency ? draftAgency.value : false })); if (r) { draftBase.value = r.version.text; text.value = r.version.text; lastSaved = text.value; saveState.value = 'saved'; findings.value = [...(r.decisions ?? []).map((d) => ({ level: 'ok', code: 'decided', message: `${d.name}: ${d.decision} (${d.emotion})` })), ...r.findings]; versions.value = await api(`/scenes/${sceneId.value}/versions`); await load(); } }
+async function accept() { await settle(); const r = await run('accepting', () => api<{ facts: unknown[]; witnessed: string[]; findings: Finding[] }>(`/scenes/${sceneId.value}/accept`, 'POST')); if (r) { findings.value = [{ level: 'ok', code: 'accepted', message: `${r.facts.length} facts, witnessed by ${r.witnessed.join(', ')}` }, ...r.findings]; await load(); } }
 const proof = ref<{ original: string; fix: string; reason: string }[]>([]);
 async function proofread() { proof.value = (await run('proofreading', () => api<typeof proof.value>(`/scenes/${sceneId.value}/proof`, 'POST'))) ?? []; }
-function applyFix(p: { original: string; fix: string }) { text.value = text.value.replace(p.original, p.fix); proof.value = proof.value.filter((x) => x !== p); }
+function applyFix(p: { original: string; fix: string }) { text.value = text.value.replace(p.original, p.fix); proof.value = proof.value.filter((x) => x !== p); typed(); }
 const chapters = computed(() => {
   const m = new Map<number, Scene[]>();
   for (const s of [...(bible.value?.scenes ?? [])].sort((a, b) => a.order - b.order)) m.set(s.chapter, [...(m.get(s.chapter) ?? []), s]);
@@ -117,7 +161,7 @@ const chapters = computed(() => {
 const diff = computed(() => (draftBase.value === null ? [] : diffWords(draftBase.value, text.value)));
 const editNote = ref(''); const selection = ref('');
 function grabSelection() { selection.value = window.getSelection()?.toString() ?? ''; }
-async function editSel() { const r = await run('editing', () => api<{ revised: string }>('/edit', 'POST', { passage: selection.value, note: editNote.value })); if (r) text.value = text.value.replace(selection.value, r.revised); }
+async function editSel() { const r = await run('editing', () => api<{ revised: string }>('/edit', 'POST', { passage: selection.value, note: editNote.value })); if (r) { text.value = text.value.replace(selection.value, r.revised); typed(); } }
 async function outline() { const n = Number(prompt('How many chapters?', '3') ?? 0); if (n) { await run('outlining', () => api('/outline', 'POST', { chapters: n })); await load(); } }
 
 // ---- character room ----
@@ -180,11 +224,11 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
   </div>
 
   <main class="page">
-    <header :key="tab" v-reveal class="hero" :class="{ compact: tab === 'read' }">
+    <header :key="tab" v-reveal class="hero" :class="{ compact: tab === 'read' || tab === 'scenes' }">
       <span class="eyebrow">{{ meta.eyebrow }}</span>
       <h1 v-if="meta.title" v-html="meta.title" />
       <h1 v-else>{{ bible?.project.title ?? 'Author Studio' }}</h1>
-      <p v-if="tab !== 'read'" class="lede">{{ meta.lede }}</p>
+      <p v-if="meta.lede" class="lede">{{ meta.lede }}</p>
     </header>
 
     <Library v-if="tab === 'library'" :ai-on="aiOn" @opened="opened" @settings="go('settings')" />
@@ -225,20 +269,22 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
       <Panel :span="7" eyebrow="Project" title="Premise &amp; voice">
         <div class="field-row"><div><label>Title</label><input v-model="bible.project.title" @change="saveProject" /></div><div><label>Genre</label><input v-model="bible.project.genre" @change="saveProject" /></div></div>
         <div class="field-row">
-          <div><label>Point of view</label><select v-model="bible.project.voice.pov" @change="saveProject"><option>first</option><option>third-limited</option><option>third-omniscient</option></select></div>
-          <div><label>Tense</label><select v-model="bible.project.voice.tense" @change="saveProject"><option>past</option><option>present</option></select></div>
+          <div><label>Point of view</label><select v-model="bible.project.voice.pov" @change="saveProject"><option value="first">First person (I)</option><option value="third-limited">Third person, close</option><option value="third-omniscient">Third person, all-knowing</option></select></div>
+          <div><label>Tense</label><select v-model="bible.project.voice.tense" @change="saveProject"><option value="past">Past (she walked)</option><option value="present">Present (she walks)</option></select></div>
         </div>
-        <label>Tone</label><input v-model="bible.project.voice.tone" @change="saveProject" />
-        <label>Logline</label><textarea v-model="bible.premise.logline" @change="savePremise" />
-        <div class="field-row"><div><label>Dramatic question</label><input v-model="bible.premise.dramaticQuestion" @change="savePremise" /></div><div><label>Theme</label><input v-model="bible.premise.theme" @change="savePremise" /></div></div>
-        <label>Ending</label><textarea v-model="bible.premise.ending" @change="savePremise" />
+        <label>Tone</label><input v-model="bible.project.voice.tone" placeholder="Spare, wry, lush…" @change="saveProject" />
+        <label>Logline</label><textarea v-model="bible.premise.logline" placeholder="One sentence: who wants what, and what stands in the way" @change="savePremise" />
+        <div class="field-row"><div><label>Dramatic question</label><input v-model="bible.premise.dramaticQuestion" placeholder="What keeps the reader turning pages?" @change="savePremise" /></div><div><label>Theme</label><input v-model="bible.premise.theme" placeholder="What it is really about" @change="savePremise" /></div></div>
+        <label>Ending</label><textarea v-model="bible.premise.ending" placeholder="How it ends. Only you see this; it keeps drafts pointed the right way." @change="savePremise" />
       </Panel>
-      <Panel :span="5" eyebrow="Cast" :title="`${bible.characters.length} souls`">
+      <Panel :span="5" eyebrow="Cast" :title="`${bible.characters.length} character${bible.characters.length === 1 ? '' : 's'}`">
+        <template #actions><button class="pill" @click="toSheet">Add</button></template>
         <ul class="list">
           <li v-for="c in bible.characters" :key="c.id" @click="go('room'); openRoom(c.id)">
             <div class="who"><span class="avatar">{{ initials(c.name) }}</span><div><b>{{ c.name }}</b> <span class="muted">{{ c.role }}</span><br /><span class="muted">{{ c.summary }}</span></div></div>
           </li>
         </ul>
+        <p v-if="!bible.characters.length" class="empty">Nobody yet. {{ aiOn ? 'Describe someone to the builder, or fill in a sheet below.' : 'Fill in a sheet below; a name is enough to start.' }}</p>
       </Panel>
       <Panel v-if="aiOn" :span="7" eyebrow="Build by talking" :title="bId ? `Editing ${byId(bId)}` : 'A new character'">
         <template #actions><button class="pill" @click="buildStart(null)">New</button><select style="width:auto;margin:0" @change="buildStart(($event.target as HTMLSelectElement).value || null)"><option value="">Edit existing…</option><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select></template>
@@ -259,13 +305,16 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
         <div class="row"><select v-model="newWorld.kind" style="flex:0 0 130px"><option>location</option><option>faction</option><option>rule</option><option>item</option><option>glossary</option></select><input v-model="newWorld.name" placeholder="Name" /></div>
         <input v-model="newWorld.summary" placeholder="Summary" style="margin-top:8px" /><button class="pill solid" :disabled="!newWorld.name" @click="addWorld">Add world entry</button>
       </Panel>
-      <Panel :span="6" :eyebrow="seedTraits ? 'Proposed · edit before adding' : 'By hand'" :title="seedTraits ? `Seeded: ${newChar.name || 'unnamed'}` : 'Fill the sheet directly'">
-        <div class="field-row"><div><label>Name</label><input v-model="newChar.name" /></div><div><label>Role</label><input v-model="newChar.role" /></div></div>
-        <label>Summary</label><textarea v-model="newChar.summary" />
+      <Panel id="new-character" :span="6" :eyebrow="seedTraits ? 'Proposed · edit before adding' : 'By hand'" :title="seedTraits ? `Seeded: ${newChar.name || 'unnamed'}` : 'Add a character'">
+        <div class="field-row"><div><label>Name</label><input v-model="newChar.name" placeholder="Mara Voss" /></div><div><label>Role</label><input v-model="newChar.role" placeholder="Protagonist, her brother…" /></div></div>
+        <label>Who are they?</label><textarea v-model="newChar.summary" placeholder="A line or two is plenty" />
+        <details class="more" :open="!!seedTraits">
+        <summary>Go deeper (optional)</summary>
         <div class="field-row"><div><label>Want</label><input v-model="newChar.want" /></div><div><label>Need</label><input v-model="newChar.need" /></div></div>
         <div class="field-row"><div><label>Wound</label><input v-model="newChar.wound" /></div><div><label>Arc</label><input v-model="newChar.arc" /></div></div>
         <label>Voice sample</label><textarea v-model="newChar.voiceSample" placeholder="A few lines they would say" />
         <label>Secrets</label><input v-model="newChar.secrets" placeholder="separated; by semicolons" />
+        </details>
         <div class="row" style="margin-top:8px"><button class="pill solid" :disabled="!newChar.name || !!busy" @click="addCharacter">{{ seedTraits ? 'Add this character' : 'Add character' }}</button><button v-if="seedTraits" class="pill" @click="discardSeed">Discard proposal</button></div>
       </Panel>
       <Panel v-if="aiOn" :span="6" eyebrow="From a reference" title="Seed a character">
@@ -285,45 +334,53 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
           <template #actions><button v-if="aiOn" class="pill" :disabled="!!busy" @click="outline">AI outline…</button></template>
           <template v-for="[ch, list] in chapters" :key="ch">
             <div class="chapter">Chapter {{ ch }}</div>
-            <ul class="list"><li v-for="s in list" :key="s.id" :class="{ on: s.id === sceneId }" @click="openScene(s.id)"><b>{{ s.order }}. {{ s.title }}</b> <span class="status" :class="s.status">{{ s.status }}</span><br /><span class="muted">POV {{ byId(s.pov) }}</span></li></ul>
+            <ul class="list"><li v-for="s in list" :key="s.id" :class="{ on: s.id === sceneId }" @click="openScene(s.id)"><b>{{ s.order }}. {{ s.title }}</b> <span class="status" :class="s.status">{{ STATUS[s.status] ?? s.status }}</span><template v-if="s.pov"><br /><span class="muted">POV {{ byId(s.pov) }}</span></template></li></ul>
           </template>
+          <p v-if="!chapters.length" class="empty">No scenes yet. Add the first one below.</p>
         </Panel>
-        <Panel eyebrow="New card" title="Add a scene">
-          <input v-model="newScene.title" placeholder="Title" />
-          <div class="row"><input v-model.number="newScene.chapter" type="number" placeholder="Chapter" style="flex:0 0 96px" /><select v-model="newScene.pov"><option value="">POV…</option><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select></div>
-          <label>Who is in it</label><select v-model="newScene.characters" multiple><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-          <input v-model="newScene.goal" placeholder="Goal" /><input v-model="newScene.conflict" placeholder="Conflict" /><input v-model="newScene.outcome" placeholder="Outcome" />
-          <div class="field-row"><input v-model="newScene.location" placeholder="Location" /><input v-model="newScene.time" placeholder="Time" /></div>
-          <button class="pill solid" :disabled="!newScene.title || !newScene.pov" @click="addScene">Add scene</button>
+        <Panel eyebrow="Next" title="Add a scene">
+          <div class="row"><input v-model="newScene.title" placeholder="What happens? e.g. The customs shed" @keyup.enter="newScene.title && addScene()" /><input v-model.number="newScene.chapter" type="number" min="1" aria-label="Chapter" title="Chapter" style="flex:0 0 76px" /></div>
+          <details class="more">
+            <summary>More details (optional)</summary>
+            <template v-if="bible.characters.length">
+              <label>Point of view</label><select v-model="newScene.pov"><option value="">Not set</option><option v-for="c in bible.characters" :key="c.id" :value="c.id">{{ c.name }}</option></select>
+              <label>Who is in it</label>
+              <div class="row"><label v-for="c in bible.characters" :key="c.id" class="check" :class="{ on: newScene.characters.includes(c.id) }"><input v-model="newScene.characters" type="checkbox" :value="c.id" /> {{ c.name }}</label></div>
+            </template>
+            <input v-model="newScene.goal" placeholder="Goal: what someone wants here" /><input v-model="newScene.conflict" placeholder="Conflict: what stands in the way" /><input v-model="newScene.outcome" placeholder="Outcome: how it ends" />
+            <div class="field-row"><input v-model="newScene.location" placeholder="Where" /><input v-model="newScene.time" placeholder="When" /></div>
+          </details>
+          <button class="pill solid" :disabled="!newScene.title || !!busy" @click="addScene">Add scene</button>
         </Panel>
       </div>
       <div class="stack span-8" :class="{ 'first-on-phone': scene }">
         <Panel v-if="scene" :key="scene.id" :eyebrow="`Scene ${scene.order} · chapter ${scene.chapter} · ${versions.length} version(s)`" :title="scene.title">
-          <p class="muted">{{ scene.goal }} → {{ scene.outcome }}</p>
-          <div class="toolbar">
+          <p v-if="scene.goal || scene.outcome" class="muted">{{ scene.goal }}<template v-if="scene.goal && scene.outcome"> → </template>{{ scene.outcome }}</p>
+          <div v-if="aiOn" class="toolbar">
             <template v-if="aiOn">
             <Cta :disabled="!!busy" @click="draft(false)">Draft with AI</Cta>
             <button class="pill" :disabled="!!busy || !draftAgency.length" title="The ticked characters decide first; the prose honours their choices" @click="draft(true)">Draft with agency</button>
             <label v-for="id in scene.characters" :key="id" class="check"><input v-model="draftAgency" type="checkbox" :value="id" /> {{ byId(id) }}</label>
             </template>
-            <span v-else class="muted">Manual mode: write the scene yourself. Save keeps every version.</span>
           </div>
-          <div class="prose-wrap"><textarea v-model="text" class="prose" placeholder="Write, or draft with AI and rewrite it in your voice." @mouseup="grabSelection" /></div>
+          <div class="prose-wrap"><textarea v-model="text" class="prose" :placeholder="aiOn ? 'Start writing, or draft with AI and rewrite it in your voice.' : 'Start writing. Everything saves as you type.'" @input="typed" @mouseup="grabSelection" /></div>
           <div class="toolbar">
-            <button class="pill solid" :disabled="!!busy || !text" @click="saveText">Save my text</button>
-            <button class="pill yes" :disabled="!!busy || !versions.length" @click="accept">Accept · facts &amp; witness</button>
+            <span class="save" :class="saveState" role="status">{{ { '': '', unsaved: 'Not saved yet', saving: 'Saving…', saved: 'Saved' }[saveState] }}<template v-if="words"> · {{ words.toLocaleString() }} words</template></span>
+            <span style="flex:1" />
             <button class="pill" :disabled="!!busy || !text" @click="proofread">Proofread</button>
+            <button v-if="scene.status !== 'accepted'" class="pill yes" :disabled="!!busy || !text" title="Marks the scene finished. What happened becomes continuity facts, and each character remembers what they saw." @click="accept">Mark done</button>
+            <span v-else class="status accepted">done</span>
           </div>
           <div v-if="selection && aiOn" class="composer"><span class="muted" style="padding-left:12px;white-space:nowrap">{{ selection.length }} chars</span><input v-model="editNote" placeholder="Note for the line editor" /><button class="pill" @click="editSel">Edit selection</button></div>
         </Panel>
-        <Panel v-else eyebrow="Nothing open"><p class="empty">Pick a scene from the outline, or add a card.</p></Panel>
+        <Panel v-else eyebrow="Nothing open"><p class="empty">Pick a scene from the outline, or add one.</p></Panel>
         <Panel v-if="scene && findings.length" eyebrow="Findings">
           <div v-for="(f, i) in findings" :key="i" class="finding" :class="'f-' + f.level"><code>{{ f.code }}</code><span>{{ f.message }}</span></div>
         </Panel>
         <Panel v-if="scene && proof.length" eyebrow="Proofreading" :title="`${proof.length} issue(s)`">
           <div v-for="(p, i) in proof" :key="i" class="finding diff"><del>{{ p.original }}</del> → <ins>{{ p.fix }}</ins> <span class="muted">{{ p.reason }}</span><button class="pill" style="margin-left:auto" @click="applyFix(p)">Apply</button></div>
         </Panel>
-        <Panel v-if="scene && diff.length" eyebrow="Saving this teaches your writer soul" title="Your edits vs the AI draft" class="diff">
+        <Panel v-if="scene && diff.length" eyebrow="Your rewrite teaches the studio your style" title="Your edits vs the AI draft" class="diff">
           <p><template v-for="(d, i) in diff" :key="i"><ins v-if="d.added">{{ d.value }}</ins><del v-else-if="d.removed">{{ d.value }}</del><span v-else>{{ d.value }}</span></template></p>
         </Panel>
       </div>
@@ -333,6 +390,8 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
     <div v-else-if="tab === 'room'" class="bento">
       <div class="stack span-4">
         <Panel eyebrow="Who">
+          <p v-if="!bible.characters.length" class="empty">No characters yet.</p>
+          <button v-if="!bible.characters.length" class="pill solid" @click="go('bible')">Add one in Story</button>
           <ul class="list"><li v-for="c in bible.characters" :key="c.id" :class="{ on: c.id === roomId }" @click="openRoom(c.id)"><div class="who"><span class="avatar">{{ initials(c.name) }}</span><div><b>{{ c.name }}</b><br /><span class="muted">{{ c.role }}</span></div></div></li></ul>
         </Panel>
         <template v-if="roomId">

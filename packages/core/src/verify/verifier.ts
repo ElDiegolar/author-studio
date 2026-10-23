@@ -19,7 +19,8 @@ export function verifyScene(bible: Bible, scene: Scene, text: string): Finding[]
   }
 
   const pov = bible.characters.find((c) => c.id === scene.pov);
-  if (!pov) out.push({ level: 'error', code: 'scene.pov', message: `POV character ${scene.pov} does not exist` });
+  // No POV yet is fine (a scene written by hand, or imported without a cast); a dangling one is not.
+  if (scene.pov && !pov) out.push({ level: 'error', code: 'scene.pov', message: `POV character ${scene.pov} does not exist` });
   for (const id of scene.characters) if (!bible.characters.some((c) => c.id === id)) out.push({ level: 'error', code: 'scene.cast', message: `character ${id} does not exist` });
 
   if (bible.project.voice.pov === 'first') {

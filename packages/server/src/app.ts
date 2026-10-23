@@ -66,7 +66,9 @@ export async function createApp(opts: AppOptions): Promise<Hono> {
     if (!title?.trim()) return c.json({ error: 'A title is required.' }, 400);
     const dir = await newProjectDir(opts.library, title);
     await Studio.init(dir, { title: title.trim(), genre: genre ?? '', audience: 'adult', targetWords: 80000, voice: { pov: 'third-limited', tense: 'past', tone: '', bannedWords: [], exemplars: [] }, ...(author ? { author } : {}) }, { logline: '', dramaticQuestion: '', theme: '', ending: '' });
-    await openProject(dir);
+    const st = await openProject(dir);
+    // A blank first scene, so a new book opens straight onto a page to write on.
+    await st.store.addScene({ title: 'Scene 1', chapter: 1, pov: '', characters: [], goal: '', conflict: '', outcome: '', location: '', time: '', targetWords: 1500, summary: '' });
     return c.json({ ok: true, dir });
   });
   app.post('/api/library/close', (c) => { studio = null; return c.json({ ok: true }); });
@@ -159,7 +161,7 @@ app.post('/api/scenes/:id/draft', async (c) => { const body = await c.req.json()
 app.post('/api/characters/:id/mirror', async (c) => c.json(await S().mirror(c.req.param('id'))));
 app.post('/api/characters/:id/decide', async (c) => { const { situation, asOf, save } = await c.req.json(); return c.json(await S().decide(c.req.param('id'), situation, asOf, { save: save === true })); });
 app.post('/api/characters/:id/decisions', async (c) => { const { situation, decision, asOf } = await c.req.json(); await S().recordDecision(c.req.param('id'), situation, decision, asOf ?? 0); return c.json({ ok: true }); });
-app.post('/api/scenes/:id/text', async (c) => { const { text } = await c.req.json(); return c.json(await S().saveAuthorText(c.req.param('id'), text)); });
+app.post('/api/scenes/:id/text', async (c) => { const { text, autosave } = await c.req.json(); return c.json(await S().saveAuthorText(c.req.param('id'), text, { autosave: !!autosave })); });
 app.post('/api/scenes/:id/accept', async (c) => c.json(await S().accept(c.req.param('id'))));
 app.post('/api/scenes/:id/proof', async (c) => c.json(await S().proofread(c.req.param('id'))));
 app.post('/api/outline', async (c) => { const { chapters, per } = await c.req.json(); return c.json(await S().outline(chapters ?? 3, per ?? 3)); });
