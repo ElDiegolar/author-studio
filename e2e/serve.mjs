@@ -35,7 +35,7 @@ await studio.store.addScene({ title: 'Night at the Quay', chapter: 1, pov: mara.
 await studio.store.addScene({ title: 'Greyhaven', chapter: 2, pov: mara.id, characters: [mara.id], goal: 'find the Albatross', conflict: 'nobody will talk', outcome: 'she finds the hull', location: 'Greyhaven', time: 'morning', targetWords: 150, summary: '' });
 
 const settings = path.join(tmp, 'settings.json');
-const env = { ...process.env, AUTHOR_PROJECT: project, PORT: String(port), AUTHOR_WRITER_HOME: writerHome, AUTHOR_SETTINGS: settings, AUTHOR_LIBRARY: tmp };
+const env = { ...process.env, AUTHOR_LOCAL_PROBE: '', AUTHOR_PROJECT: project, PORT: String(port), AUTHOR_WRITER_HOME: writerHome, AUTHOR_SETTINGS: settings, AUTHOR_LIBRARY: tmp };
 let fake = null;
 if (!live) {
   fake = await startFakeModel();

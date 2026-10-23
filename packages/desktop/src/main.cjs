@@ -43,6 +43,11 @@ function createWindow() {
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
+  // Exports: the system Save dialog opens in Documents, and the page is told where the file went.
+  win.webContents.session.on('will-download', (_e, item) => {
+    item.setSaveDialogOptions({ defaultPath: path.join(app.getPath('documents'), item.getFilename()) });
+    item.once('done', (_d, state) => { if (state === 'completed' && win) win.webContents.send('saved', item.getSavePath()); });
+  });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith(origin)) { e.preventDefault(); if (/^https?:/.test(url)) void shell.openExternal(url); } });
   void win.loadURL(origin);
 }
@@ -56,7 +61,6 @@ ipcMain.handle('save-pdf', async () => {
     const { filePath, canceled } = await dialog.showSaveDialog(win, { title: 'Save the book as PDF', defaultPath: path.join(app.getPath('documents'), `${title.replace(/[\\/:*?"<>|]+/g, '')}.pdf`), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
     if (canceled || !filePath) return null;
     fs.writeFileSync(filePath, pdf);
-    shell.showItemInFolder(filePath);
     return filePath;
   } finally { w.destroy(); }
 });
@@ -85,6 +89,8 @@ app.whenReady().then(async () => {
     const studio = await createApp({
       library, webDist: path.join(__dirname, 'web'),
       ...(last && fs.existsSync(path.join(last, 'project.json')) ? { project: last } : {}),
+      // Folders open in Explorer/Finder with the file selected, the way the system does it.
+      reveal: async (p) => { if (fs.statSync(p).isFile()) shell.showItemInFolder(p); else { const err = await shell.openPath(p); if (err) throw new Error(err); } },
       onOpen: (title, dir) => { writeState({ lastProject: dir }); win?.setTitle(`${title} · Author Studio`); },
     });
     await new Promise((resolve) => serve({ fetch: studio.fetch, port: 0, hostname: '127.0.0.1' }, (info) => { origin = `http://127.0.0.1:${info.port}`; resolve(); }));

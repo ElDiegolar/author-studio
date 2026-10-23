@@ -4,6 +4,8 @@ import { computed, onMounted, ref } from 'vue';
 import { api } from '../api';
 import Panel from './Panel.vue';
 import Cta from './Cta.vue';
+import PathLink from './PathLink.vue';
+import { fileManager, reveal } from '../lib/places';
 
 interface Entry { dir: string; title: string; genre: string; scenes: number; characters: number; words: number; updatedAt: string }
 interface Preview { id: string; format: string; title: string; words: number; chapters: { title: string; scenes: number; words: number }[]; scenes: number; candidates: { name: string; count: number; dialogue: number }[]; exactCast: boolean; aiOn: boolean }
@@ -77,12 +79,14 @@ const ago = (iso: string) => { const d = (Date.now() - new Date(iso).getTime()) 
       <span class="row"><button class="pill solid" @click="emit('settings')">Choose an AI</button><button class="pill" @click="hideNudge">Not now</button></span>
     </div>
     <Panel :span="7" eyebrow="On this machine" :title="lib ? `${lib.projects.length} novel${lib.projects.length === 1 ? '' : 's'}` : 'Your novels'">
-      <p class="muted">Saved on this computer as plain files you own. Nothing is uploaded. <span v-if="lib" :title="lib.dir">Folder: <code>{{ lib.dir.split(/[\\/]/).filter(Boolean).slice(-2).join('/') }}</code></span></p>
+      <p class="muted">Saved on this computer as plain files you own. Nothing is uploaded.</p>
+      <PathLink v-if="lib" :path="lib.dir" />
       <ul class="list novels">
         <li v-for="p in lib?.projects ?? []" :key="p.dir" :class="{ on: p.dir === lib?.current }" @click="openNovel(p.dir)">
           <div class="who"><span class="avatar">{{ p.title.slice(0, 1).toUpperCase() }}</span>
             <div><b>{{ p.title }}</b> <span v-if="p.dir === lib?.current" class="status accepted">open</span><br />
-              <span class="muted">{{ p.genre || 'No genre' }} · {{ p.words.toLocaleString() }} words · {{ p.scenes }} scenes · {{ p.characters }} characters · {{ ago(p.updatedAt) }}</span></div></div>
+              <span class="muted">{{ p.genre || 'No genre' }} · {{ p.words.toLocaleString() }} words · {{ p.scenes }} scenes · {{ p.characters }} characters · {{ ago(p.updatedAt) }}</span></div>
+            <button class="icon-btn" :title="`Show in ${fileManager}`" :aria-label="`Show ${p.title} in ${fileManager}`" @click.stop="reveal(p.dir).catch((e) => (error = e.message))"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><path d="M1.75 4.25a1 1 0 0 1 1-1h3.1l1.4 1.5h5.999a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1Z" /></svg></button></div>
         </li>
       </ul>
       <p v-if="lib && !lib.projects.length" class="empty">No novels yet. Start one, or import a manuscript you already have.</p>
@@ -146,6 +150,12 @@ const ago = (iso: string) => { const d = (Date.now() - new Date(iso).getTime()) 
 <style scoped>
 code { font: 12px var(--mono); color: var(--ink-2); }
 .novels li { padding: 14px; }
+.novels .who { width: 100%; }
+.icon-btn { margin-left: auto; flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity 300ms var(--spring), background 300ms var(--spring), color 300ms var(--spring); }
+.icon-btn svg { width: 16px; height: 16px; }
+.novels li:hover .icon-btn, .icon-btn:focus-visible { opacity: 1; }
+.icon-btn:hover { background: var(--violet-wash); color: var(--accent); }
+@media (hover: none) { .icon-btn { opacity: 1; } }
 .drop { display: grid; gap: 6px; place-items: center; text-align: center; padding: 34px 18px; border-radius: 20px; cursor: pointer; margin: 0; color: var(--ink);
   background: var(--field); box-shadow: inset 0 0 0 1px var(--hair-2); transition: background 400ms var(--spring), box-shadow 400ms var(--spring); font: 400 14px/1.4 var(--ui); letter-spacing: 0; }
 .drop:hover, .drop.drag { background: var(--violet-wash); box-shadow: inset 0 0 0 1px var(--accent); }

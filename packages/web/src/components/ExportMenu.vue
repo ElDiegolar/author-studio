@@ -6,10 +6,10 @@ const FORMATS = [
   { id: 'md', label: 'Markdown' },
   { id: 'txt', label: 'Text' },
 ] as const;
+import { baseName, desktop, notify } from '../lib/places';
 /** In the desktop app, the book is printed straight to a PDF file; in a browser, via the print dialog. */
-const desktop = (window as unknown as { authorDesktop?: { savePdf(): Promise<string | null> } }).authorDesktop;
 async function pdf() {
-  if (desktop) { await desktop.savePdf(); return; }
+  if (desktop?.savePdf) { const p = await desktop.savePdf(); if (p) notify(`Saved “${baseName(p)}”`, p); return; }
   const w = window.open('/api/export/html?inline=1', '_blank');
   // The print-ready page opens; the system print dialog saves it as a PDF.
   w?.addEventListener('load', () => setTimeout(() => w.print(), 300));

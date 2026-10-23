@@ -18,14 +18,16 @@ loadEnvFiles();
 import { LocalProvider } from './local.js';
 import { ClaudeCodeProvider } from './claudeCode.js';
 import type { Provider } from './provider.js';
+import { serviceById, type ServiceId } from './services.js';
 
 export type Role = 'architect' | 'drafter' | 'actor' | 'extractor' | 'editor';
 
-export type ProviderKind = 'anthropic' | 'local' | 'claude-code' | 'none';
+export type ProviderKind = 'anthropic' | 'local' | 'claude-code' | 'cloud' | 'none';
 
 export interface AiConfig {
   /** Provider per role. 'anthropic' needs credentials; 'local' needs llama-server; 'none' is manual mode. */
-  roles: Record<Role, { provider: ProviderKind; model?: string; apiKey?: string }>;
+  /** 'cloud' is a hosted OpenAI-style service (see services.ts), named by `service`. */
+  roles: Record<Role, { provider: ProviderKind; model?: string; apiKey?: string; service?: ServiceId }>;
   localUrl: string;
   localThinking: boolean;
 }
@@ -65,10 +67,15 @@ const cache = new Map<string, Provider>();
 export function providerFor(role: Role, cfg: AiConfig = defaultAiConfig()): Provider {
   const r = cfg.roles[role];
   if (r.provider === 'none') return new NoAiProvider();
-  const key = `${r.provider}:${r.model ?? ''}:${r.provider === 'local' ? cfg.localUrl : ''}:${r.apiKey ? r.apiKey.slice(-8) : ''}`;
+  const key = `${r.provider}:${r.service ?? ''}:${r.model ?? ''}:${r.provider === 'local' ? cfg.localUrl : ''}:${r.apiKey ? r.apiKey.slice(-8) : ''}`;
   let p = cache.get(key);
   if (!p) {
-    p = r.provider === 'anthropic' ? new AnthropicProvider(r.model, r.apiKey) : r.provider === 'claude-code' ? new ClaudeCodeProvider(r.model) : new LocalProvider(cfg.localUrl, r.model, cfg.localThinking);
+    const svc = r.provider === 'cloud' ? serviceById(r.service) : undefined;
+    if (r.provider === 'cloud' && !svc) throw new Error(`unknown AI service ${r.service}`);
+    p = r.provider === 'anthropic' ? new AnthropicProvider(r.model, r.apiKey)
+      : r.provider === 'claude-code' ? new ClaudeCodeProvider(r.model)
+      : svc ? new LocalProvider(svc.baseUrl, r.model, false, { apiKey: r.apiKey ?? '', tokenParam: svc.tokenParam, thinkingRoom: svc.thinkingRoom, service: svc.name })
+      : new LocalProvider(cfg.localUrl, r.model, cfg.localThinking);
     cache.set(key, p);
   }
   return p;

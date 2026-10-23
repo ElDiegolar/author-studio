@@ -7,14 +7,19 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { defaultAiConfig, type AiConfig } from './ai/index.js';
+import type { ServiceId } from './ai/services.js';
 
-export type AiMode = 'anthropic' | 'claude-code' | 'local' | 'none';
+export type AiMode = 'anthropic' | 'claude-code' | 'local' | 'cloud' | 'none';
 
 export interface Settings {
   ai: {
     mode: AiMode;
     /** Anthropic API key (mode anthropic). Stored only in the local settings file. */
     apiKey?: string;
+    /** Mode cloud: which hosted service (OpenAI, Gemini, Grok…). */
+    service?: ServiceId;
+    /** One key per hosted service, so switching back and forth never asks twice. Local file only. */
+    keys?: Partial<Record<ServiceId, string>>;
     /** Strong model for drafting, characters and the agent. */
     model?: string;
     /** Cheap model for extraction and proofreading. */
@@ -41,10 +46,13 @@ export async function saveSettings(s: Settings, file = settingsPath()): Promise<
 }
 
 /** Settings as the UI may see them: the key is never sent back, only whether one is set. */
-export function publicSettings(s: Settings | null): { ai: Omit<Settings['ai'], 'apiKey'> & { hasKey: boolean; keyHint: string } } {
+const hint = (k: string) => `…${k.slice(-4)}`;
+/** Settings as the UI may see them: keys are never sent back, only which services have one and its last four characters. */
+export function publicSettings(s: Settings | null): { ai: Omit<Settings['ai'], 'apiKey' | 'keys'> & { hasKey: boolean; keyHint: string; keyHints: Partial<Record<ServiceId, string>> } } {
   const ai = s?.ai ?? { mode: envMode() };
-  const { apiKey, ...rest } = ai;
-  return { ai: { ...rest, hasKey: Boolean(apiKey), keyHint: apiKey ? `…${apiKey.slice(-4)}` : '' } };
+  const { apiKey, keys, ...rest } = ai;
+  const keyHints = Object.fromEntries(Object.entries(keys ?? {}).filter(([, k]) => k).map(([id, k]) => [id, hint(k!)])) as Partial<Record<ServiceId, string>>;
+  return { ai: { ...rest, hasKey: Boolean(apiKey), keyHint: apiKey ? hint(apiKey) : '', keyHints } };
 }
 
 function envMode(): AiMode {
@@ -63,6 +71,11 @@ export function aiConfigFrom(s: Settings | null): AiConfig {
   if (mode === 'local') {
     const local = { provider: 'local' as const, model: s.ai.localModel || 'local' };
     return { ...base, localUrl: s.ai.localUrl || base.localUrl, roles: { architect: local, drafter: local, actor: local, editor: local, extractor: local } };
+  }
+  if (mode === 'cloud') {
+    const apiKey = s.ai.service ? s.ai.keys?.[s.ai.service] : undefined;
+    const strong = { provider: 'cloud' as const, service: s.ai.service, model: s.ai.model, ...(apiKey ? { apiKey } : {}) };
+    return { ...base, roles: { architect: strong, drafter: strong, actor: strong, editor: strong, extractor: { ...strong, model: s.ai.cheapModel || s.ai.model } } };
   }
   const strong = { provider: mode, model: s.ai.model || (mode === 'claude-code' ? 'claude-haiku-5-5' : 'claude-opus-5-5'), ...(s.ai.apiKey ? { apiKey: s.ai.apiKey } : {}) };
   const cheap = { ...strong, model: s.ai.cheapModel || 'claude-haiku-5-5' };

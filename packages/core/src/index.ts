@@ -19,3 +19,5 @@ export * from './import/parse.js';
 export * from './import/structure.js';
 export * from './import/commit.js';
 export * from './export.js';
+export * from './ai/setup.js';
+export * from './ai/services.js';

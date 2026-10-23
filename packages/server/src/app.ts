@@ -6,9 +6,10 @@ import { Hono, type Context } from 'hono';
 import { diffWords } from 'diff';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { reveal, within } from './reveal.js';
 import {
   Studio, WriterStore, aiConfigFrom, aiEnabled, assembleBook, describeProject, exportBook, importIntoLibrary, listLibrary,
-  loadSettings, newProjectDir, parseManuscript, preview, publicSettings, saveSettings, settingsPath, structure,
+  loadSettings, newProjectDir, writerHome, detectAi, testAi, prepareAi, SERVICES, serviceById, listServiceModels, parseManuscript, preview, publicSettings, saveSettings, settingsPath, structure,
   EXPORT_TYPES, IMPORT_EXTENSIONS, type ExportFormat, type ImportedChapter, type ImportProgress, type Parsed, type Settings,
 } from '@author-studio/core';
 
@@ -23,6 +24,8 @@ export interface AppOptions {
   project?: string;
   /** Called after a novel is opened, e.g. to update the desktop window title. */
   onOpen?: (title: string, dir: string) => void;
+  /** Show a path in the file manager; the desktop app passes the native one. */
+  reveal?: (p: string) => Promise<void>;
 }
 
 class NoProject extends Error { constructor() { super('No novel is open. Open or create one from the library.'); } }
@@ -73,18 +76,56 @@ export async function createApp(opts: AppOptions): Promise<Hono> {
   });
   app.post('/api/library/close', (c) => { studio = null; return c.json({ ok: true }); });
 
-  app.get('/api/settings', (c) => c.json({ ...publicSettings(settings), aiOn: aiEnabled(aiConfigFrom(settings)), settingsFile, library: opts.library }));
-  app.put('/api/settings', async (c) => {
-    const body = await c.req.json() as { ai: Settings['ai'] & { clearKey?: boolean } };
+  app.get('/api/settings', (c) => c.json({ ...publicSettings(settings), aiOn: aiEnabled(aiConfigFrom(settings)), settingsFile, library: opts.library, writerHome: writerHome() }));
+  // Only the studio's own places can be shown: the library (and every novel in it), settings, the writer soul.
+  app.post('/api/reveal', async (c) => {
+    const { path: p } = await c.req.json<{ path?: string }>();
+    if (!p || !within(p, [opts.library, settingsFile, writerHome(), ...(studio ? [studio.store.dir] : [])])) return c.json({ error: 'That is not one of the studio\'s folders.' }, 403);
+    try { await fs.stat(p); } catch { return c.json({ error: 'That folder does not exist yet.' }, 404); }
+    try { await (opts.reveal ?? reveal)(p); return c.json({ ok: true }); } catch (e) { return c.json({ error: `Could not open it: ${(e as Error).message}` }, 500); }
+  });
+  /**
+   * The settings a request asks for, on top of what is saved. `apiKey` is the key for the chosen
+   * service; an empty field keeps the stored one and clearKey removes it. Other services' keys are
+   * kept, and a model picked for one service never leaks into another.
+   */
+  const merged = (body: Settings['ai'] & { clearKey?: boolean }): Settings => {
+    const { clearKey, apiKey: typed, ...ai } = body;
     const prev = settings?.ai;
-    const { clearKey, ...ai } = body.ai;
-    // An empty key field keeps the stored key; clearKey removes it.
-    const apiKey = clearKey ? undefined : ai.apiKey?.trim() || prev?.apiKey;
-    settings = { ai: { ...ai, ...(apiKey ? { apiKey } : { apiKey: undefined }) } };
-    if (!apiKey) delete settings.ai.apiKey;
+    const keys = { ...(prev?.keys ?? {}) };
+    let apiKey = prev?.apiKey;
+    const k = typed?.trim();
+    if (ai.mode === 'cloud' && ai.service) { if (clearKey) delete keys[ai.service]; else if (k) keys[ai.service] = k; }
+    if (ai.mode === 'anthropic') { if (clearKey) apiKey = undefined; else if (k) apiKey = k; }
+    const same = prev && prev.mode === ai.mode && prev.service === ai.service;
+    const next: Settings = { ai: { ...(same ? { model: prev.model, cheapModel: prev.cheapModel } : {}), ...ai, ...(apiKey ? { apiKey } : {}), ...(Object.keys(keys).length ? { keys } : {}) } };
+    for (const f of ['model', 'cheapModel', 'localUrl', 'localModel'] as const) if (!next.ai[f]) delete next.ai[f];
+    return next;
+  };
+  const adopt = async (next: Settings) => {
+    settings = next;
     await saveSettings(settings, settingsFile);
     if (studio) studio.ai = aiConfigFrom(settings);
-    return c.json({ ...publicSettings(settings), aiOn: aiEnabled(aiConfigFrom(settings)) });
+    return { ...publicSettings(settings), aiOn: aiEnabled(aiConfigFrom(settings)) };
+  };
+  app.put('/api/settings', async (c) => c.json(await adopt(merged((await c.req.json() as { ai: Settings['ai'] & { clearKey?: boolean } }).ai))));
+  /** What this computer already has: Claude Code, a local model app. */
+  app.get('/api/ai/detect', async (c) => c.json(await detectAi()));
+  /** Try a choice with one tiny request and keep it only if it works. */
+  app.post('/api/ai/connect', async (c) => {
+    const ready = await prepareAi(merged((await c.req.json() as { ai: Settings['ai'] }).ai));
+    if (!ready.ok) return c.json({ ok: false, reason: ready.reason });
+    const t = await testAi(ready.settings);
+    if (!t.ok) return c.json({ ok: false, reason: t.reason, models: ready.models });
+    return c.json({ ok: true, ms: t.ms, models: ready.models, ...(await adopt(ready.settings)) });
+  });
+  /** The hosted services, for the setup screen (no keys in here). */
+  app.get('/api/ai/services', (c) => c.json(SERVICES.map(({ prefer, cheap, fallback, baseUrl, tokenParam, thinkingRoom, ...pub }) => pub)));
+  /** Models the saved key can use on the chosen service, for the advanced picker. */
+  app.get('/api/ai/models', async (c) => {
+    const svc = serviceById(c.req.query('service')); const key = svc ? settings?.ai.keys?.[svc.id] : undefined;
+    if (!svc || !key) return c.json([]);
+    try { return c.json(await listServiceModels(svc, key)); } catch { return c.json([]); }
   });
 
   app.get('/api/import/formats', (c) => c.json(IMPORT_EXTENSIONS));

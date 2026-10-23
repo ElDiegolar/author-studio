@@ -8,6 +8,9 @@ import Reader from './components/Reader.vue';
 import Library from './components/Library.vue';
 import Settings from './components/Settings.vue';
 import ExportMenu from './components/ExportMenu.vue';
+import { fileManager, notice, reveal } from './lib/places';
+function dismissNotice() { notice.value = null; }
+function showNotice() { const p = notice.value?.path; dismissNotice(); if (p) reveal(p).catch((e: Error) => { error.value = e.message; }); }
 
 type Tab = 'studio' | 'bible' | 'scenes' | 'read' | 'room' | 'muse' | 'style' | 'verify';
 type View = Tab | 'library' | 'settings';
@@ -510,4 +513,5 @@ async function verify() { report.value = (await run('verifying', () => api<Recor
   </main>
 
   <div v-if="error" class="toast" role="alert">{{ error }} <button @click="error = ''">Dismiss</button></div>
+  <div v-else-if="notice" :key="notice.id" class="toast notice" role="status">{{ notice.text }}<button v-if="notice.path" class="show" @click="showNotice">Show in {{ fileManager }}</button><button @click="dismissNotice">Dismiss</button></div>
 </template>

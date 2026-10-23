@@ -124,9 +124,8 @@ test('create a new novel from scratch, then switch back through the library', as
 test('manual mode: No AI hides every AI action; the book still works; then AI comes back', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings' }).click();
-  await page.locator('label.mode', { hasText: 'No AI' }).click();
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('AI is off: manual mode.')).toBeVisible();
+  await page.getByRole('button', { name: 'Turn off' }).click();
+  await expect(page.getByText('AI is off. Everything else works as before.')).toBeVisible();
   const rooms = await page.locator('.links button').allTextContents();
   expect(rooms).not.toContain('Studio');
   expect(rooms).not.toContain('Ideas');

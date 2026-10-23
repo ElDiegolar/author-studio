@@ -1,30 +1,34 @@
-import type { ZodType } from 'zod/v4';
+import { z, type ZodType } from 'zod/v4';
 import { extractJson, type CompleteRequest, type CompleteResult, type Provider } from './provider.js';
 
-/** Any OpenAI-compatible local server (llama-server). Used for cheap bulk roles and offline work. */
+/** Options for a hosted OpenAI-style service (OpenAI, Gemini, Grok…) rather than a server on this machine. */
+export interface RemoteOptions { apiKey: string; tokenParam?: 'max_tokens' | 'max_completion_tokens'; thinkingRoom?: number; service?: string }
+
+/** Any OpenAI-compatible server: a local one (llama-server, Ollama, LM Studio) or a hosted service with a key. */
 export class LocalProvider implements Provider {
   readonly name: string;
-  constructor(readonly baseUrl = 'http://127.0.0.1:8081/v1', readonly model = 'local', readonly thinking = false) {
-    this.name = `local:${model}`;
+  constructor(readonly baseUrl = 'http://127.0.0.1:8081/v1', readonly model = 'local', readonly thinking = false, readonly remote?: RemoteOptions) {
+    this.name = remote ? `${remote.service ?? 'remote'}:${model}` : `local:${model}`;
   }
 
   async complete(req: CompleteRequest): Promise<CompleteResult> {
-    const body = {
-      model: this.model,
-      messages: [{ role: 'system', content: req.system }, ...req.messages],
-      max_tokens: req.maxTokens ?? 2048,
-      chat_template_kwargs: { enable_thinking: this.thinking },
-    };
+    const max = req.maxTokens ?? 2048;
+    const body = this.remote
+      ? { model: this.model, messages: [{ role: 'system', content: req.system }, ...req.messages], [this.remote.tokenParam ?? 'max_tokens']: max + (this.remote.thinkingRoom ?? 0) }
+      : { model: this.model, messages: [{ role: 'system', content: req.system }, ...req.messages], max_tokens: max, chat_template_kwargs: { enable_thinking: this.thinking } };
     const r = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      method: 'POST', headers: { 'content-type': 'application/json', ...(this.remote ? { authorization: `Bearer ${this.remote.apiKey}` } : {}) }, body: JSON.stringify(body),
+      ...(this.remote ? { signal: AbortSignal.timeout(300_000) } : {}),
     });
-    if (!r.ok) throw new Error(`local provider ${r.status}: ${await r.text()}`);
+    if (!r.ok) throw new Error(`${this.remote ? this.remote.service ?? 'remote' : 'local'} provider ${r.status}: ${(await r.text()).slice(0, 400)}`);
     const j = (await r.json()) as { choices: { message: { content: string } }[]; usage?: { prompt_tokens: number; completion_tokens: number } };
     return { text: j.choices[0]?.message.content ?? '', inputTokens: j.usage?.prompt_tokens, outputTokens: j.usage?.completion_tokens };
   }
 
   async structured<T>(req: CompleteRequest, schema: ZodType<T>, name: string): Promise<T> {
-    const sys = `${req.system}\n\nReply with ONLY a JSON value named ${name} matching this shape, no prose:\n${describe(schema)}`;
+    // Hosted models follow a JSON schema well; small local ones do better with a worked example.
+    const shape = this.remote ? `${schema.description ? `${schema.description}\n` : ''}JSON schema:\n${JSON.stringify(z.toJSONSchema(schema as ZodType<unknown>, { target: 'draft-7', unrepresentable: 'any' }))}` : describe(schema);
+    const sys = `${req.system}\n\nReply with ONLY a JSON value named ${name} matching this shape, no prose:\n${shape}`;
     let last = ''; let why = '';
     let messages = req.messages;
     for (let attempt = 0; attempt < 3; attempt++) {
