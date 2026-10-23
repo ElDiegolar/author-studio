@@ -6,10 +6,10 @@
  * Use null for a platform that is not released yet.
  */
 const DOWNLOADS = {
-  windows: "downloads/AuthorStudio-Setup-latest.exe",
+  windows: "https://github.com/ElDiegolar/author-studio/releases/download/v0.1.0/AuthorStudio-Setup-0.1.0.exe",
   macos: null,
   ios: null,
-  releaseNotes: null, // e.g. "https://github.com/you/author-studio/releases/latest"
+  releaseNotes: "https://github.com/ElDiegolar/author-studio/releases/tag/v0.1.0",
 };
 
 (function () {
