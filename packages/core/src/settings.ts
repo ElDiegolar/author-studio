@@ -9,7 +9,7 @@ import path from 'node:path';
 import { defaultAiConfig, type AiConfig } from './ai/index.js';
 import type { ServiceId } from './ai/services.js';
 
-export type AiMode = 'anthropic' | 'claude-code' | 'local' | 'cloud' | 'none';
+export type AiMode = 'anthropic' | 'claude-code' | 'local' | 'cloud' | 'studio' | 'none';
 
 export interface Settings {
   ai: {
@@ -20,6 +20,8 @@ export interface Settings {
     service?: ServiceId;
     /** One key per hosted service, so switching back and forth never asks twice. Local file only. */
     keys?: Partial<Record<ServiceId, string>>;
+    /** Mode studio: Author Studio AI, the subscription. The key arrives by device sign-in; the writer never sees it. */
+    studio?: { key: string; email: string; plan: string; baseUrl: string; model: string; cheapModel: string; portalUrl?: string };
     /** Strong model for drafting, characters and the agent. */
     model?: string;
     /** Cheap model for extraction and proofreading. */
@@ -48,11 +50,11 @@ export async function saveSettings(s: Settings, file = settingsPath()): Promise<
 /** Settings as the UI may see them: the key is never sent back, only whether one is set. */
 const hint = (k: string) => `…${k.slice(-4)}`;
 /** Settings as the UI may see them: keys are never sent back, only which services have one and its last four characters. */
-export function publicSettings(s: Settings | null): { ai: Omit<Settings['ai'], 'apiKey' | 'keys'> & { hasKey: boolean; keyHint: string; keyHints: Partial<Record<ServiceId, string>> } } {
+export function publicSettings(s: Settings | null): { ai: Omit<Settings['ai'], 'apiKey' | 'keys' | 'studio'> & { hasKey: boolean; keyHint: string; keyHints: Partial<Record<ServiceId, string>>; studio?: { email: string; plan: string; portalUrl?: string } } } {
   const ai = s?.ai ?? { mode: envMode() };
-  const { apiKey, keys, ...rest } = ai;
+  const { apiKey, keys, studio, ...rest } = ai;
   const keyHints = Object.fromEntries(Object.entries(keys ?? {}).filter(([, k]) => k).map(([id, k]) => [id, hint(k!)])) as Partial<Record<ServiceId, string>>;
-  return { ai: { ...rest, hasKey: Boolean(apiKey), keyHint: apiKey ? hint(apiKey) : '', keyHints } };
+  return { ai: { ...rest, hasKey: Boolean(apiKey), keyHint: apiKey ? hint(apiKey) : '', keyHints, ...(studio ? { studio: { email: studio.email, plan: studio.plan, ...(studio.portalUrl ? { portalUrl: studio.portalUrl } : {}) } } : {}) } };
 }
 
 function envMode(): AiMode {
@@ -71,6 +73,12 @@ export function aiConfigFrom(s: Settings | null): AiConfig {
   if (mode === 'local') {
     const local = { provider: 'local' as const, model: s.ai.localModel || 'local' };
     return { ...base, localUrl: s.ai.localUrl || base.localUrl, roles: { architect: local, drafter: local, actor: local, editor: local, extractor: local } };
+  }
+  if (mode === 'studio') {
+    const st = s.ai.studio;
+    if (!st) return aiConfigFrom({ ai: { mode: 'none' } });
+    const strong = { provider: 'cloud' as const, service: 'openrouter' as const, baseUrl: st.baseUrl, model: st.model, apiKey: st.key };
+    return { ...base, roles: { architect: strong, drafter: strong, actor: strong, editor: strong, extractor: { ...strong, model: st.cheapModel || st.model } } };
   }
   if (mode === 'cloud') {
     const apiKey = s.ai.service ? s.ai.keys?.[s.ai.service] : undefined;

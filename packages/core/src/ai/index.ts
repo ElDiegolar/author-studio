@@ -27,7 +27,7 @@ export type ProviderKind = 'anthropic' | 'local' | 'claude-code' | 'cloud' | 'no
 export interface AiConfig {
   /** Provider per role. 'anthropic' needs credentials; 'local' needs llama-server; 'none' is manual mode. */
   /** 'cloud' is a hosted OpenAI-style service (see services.ts), named by `service`. */
-  roles: Record<Role, { provider: ProviderKind; model?: string; apiKey?: string; service?: ServiceId }>;
+  roles: Record<Role, { provider: ProviderKind; model?: string; apiKey?: string; service?: ServiceId; baseUrl?: string }>;
   localUrl: string;
   localThinking: boolean;
 }
@@ -67,14 +67,14 @@ const cache = new Map<string, Provider>();
 export function providerFor(role: Role, cfg: AiConfig = defaultAiConfig()): Provider {
   const r = cfg.roles[role];
   if (r.provider === 'none') return new NoAiProvider();
-  const key = `${r.provider}:${r.service ?? ''}:${r.model ?? ''}:${r.provider === 'local' ? cfg.localUrl : ''}:${r.apiKey ? r.apiKey.slice(-8) : ''}`;
+  const key = `${r.provider}:${r.service ?? ''}:${r.baseUrl ?? ''}:${r.model ?? ''}:${r.provider === 'local' ? cfg.localUrl : ''}:${r.apiKey ? r.apiKey.slice(-8) : ''}`;
   let p = cache.get(key);
   if (!p) {
     const svc = r.provider === 'cloud' ? serviceById(r.service) : undefined;
     if (r.provider === 'cloud' && !svc) throw new Error(`unknown AI service ${r.service}`);
     p = r.provider === 'anthropic' ? new AnthropicProvider(r.model, r.apiKey)
       : r.provider === 'claude-code' ? new ClaudeCodeProvider(r.model)
-      : svc ? new LocalProvider(svc.baseUrl, r.model, false, { apiKey: r.apiKey ?? '', tokenParam: svc.tokenParam, thinkingRoom: svc.thinkingRoom, service: svc.name })
+      : svc ? new LocalProvider(r.baseUrl ?? svc.baseUrl, r.model, false, { apiKey: r.apiKey ?? '', tokenParam: svc.tokenParam, thinkingRoom: svc.thinkingRoom, service: r.baseUrl ? 'Author Studio AI' : svc.name })
       : new LocalProvider(cfg.localUrl, r.model, cfg.localThinking);
     cache.set(key, p);
   }

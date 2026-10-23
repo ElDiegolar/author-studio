@@ -5,19 +5,19 @@
  * (Claude Code signed in, a local model app) is found and offered first. Nothing technical is asked
  * unless the writer opens Advanced.
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { api } from '../api';
 import Panel from './Panel.vue';
 import Cta from './Cta.vue';
 import PathLink from './PathLink.vue';
 
-type Mode = 'anthropic' | 'claude-code' | 'local' | 'cloud' | 'none';
-interface Ai { mode: Mode; service?: string; model?: string; cheapModel?: string; localUrl?: string; localModel?: string; hasKey: boolean; keyHint: string; keyHints: Record<string, string> }
+type Mode = 'anthropic' | 'claude-code' | 'local' | 'cloud' | 'studio' | 'none';
+interface Ai { mode: Mode; service?: string; model?: string; cheapModel?: string; localUrl?: string; localModel?: string; hasKey: boolean; keyHint: string; keyHints: Record<string, string>; studio?: { email: string; plan: string; portalUrl?: string } }
 interface S { ai: Ai; aiOn: boolean; settingsFile: string; library: string; writerHome: string }
 interface Service { id: string; name: string; known: string; blurb: string; keyUrl: string; steps: string[]; keyPrefix?: string }
 interface Detect { claudeCode: { installed: boolean; signedIn: boolean | null }; local: { url: string; app: string; models: string[] }[] }
 /** A choice on the screen: one of the hosted services, Claude by key, Claude Code, a local app, or none. */
-type Choice = { kind: 'anthropic' } | { kind: 'cloud'; id: string } | { kind: 'claude-code' } | { kind: 'local' } | { kind: 'none' };
+type Choice = { kind: 'studio' } | { kind: 'anthropic' } | { kind: 'cloud'; id: string } | { kind: 'claude-code' } | { kind: 'local' } | { kind: 'none' };
 
 const emit = defineEmits<{ (e: 'saved', aiOn: boolean): void }>();
 const s = ref<S | null>(null);
@@ -29,6 +29,11 @@ const state = ref<'' | 'checking' | 'ok' | 'failed'>(''); const message = ref(''
 const models = ref<string[]>([]);
 const local = ref({ url: '', model: '' });
 const adv = ref({ model: '', cheapModel: '' });
+// Author Studio AI: the subscription, connected by device sign-in.
+const studio = ref<{ available: boolean; connected: boolean; email: string; portalUrl: string } | null>(null);
+const link = ref<{ code: string; verifyUrl: string } | null>(null);
+const usage = ref<{ fraction: number | null } | null>(null);
+let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
 const ANTHROPIC = { name: 'Claude', known: 'Claude', blurb: 'Made by Anthropic. The studio is tuned for it: the best results for drafting and characters. Pay as you go.', keyUrl: 'https://console.anthropic.com/settings/keys',
   steps: ['Sign in at console.anthropic.com (or create an account).', 'Add a little credit under Billing.', 'Create a key, copy it, and paste it here.'], keyPrefix: 'sk-ant-' };
@@ -48,6 +53,7 @@ const is = (c: Choice) => choice.value?.kind === c.kind && (c.kind !== 'cloud' |
 const nowUsing = computed(() => {
   const a = s.value?.ai; if (!a || !s.value?.aiOn) return '';
   const svc = services.value.find((x) => x.id === a.service);
+  if (a.mode === 'studio') return `Author Studio AI${a.studio?.email ? ` (${a.studio.email})` : ''}`;
   const name = a.mode === 'anthropic' ? 'Claude, with your key' : a.mode === 'claude-code' ? 'Claude, through your Claude subscription' : a.mode === 'cloud' ? `${svc?.known ?? 'a hosted AI'}${svc && svc.known !== svc.name ? ` (${svc.name})` : ''}` : `a model on this computer${a.localModel ? ` (${a.localModel})` : ''}`;
   return a.model && a.mode !== 'local' ? `${name} · ${a.model}` : name;
 });
@@ -57,10 +63,43 @@ onMounted(async () => {
   const a = s.value.ai;
   adv.value = { model: a.model ?? '', cheapModel: a.cheapModel ?? '' };
   local.value = { url: a.localUrl ?? '', model: a.localModel ?? '' };
+  studio.value = await api<{ available: boolean; connected: boolean; email: string; portalUrl: string }>('/studio-ai').catch(() => null);
+  if (studio.value?.available && !s.value.aiOn) pickChoice({ kind: 'studio' });
+  if (s.value.ai.mode === 'studio') void loadUsage();
   found.value = await api<Detect>('/ai/detect').catch(() => null);
   if (!local.value.url && found.value?.local[0]) local.value = { url: found.value.local[0].url, model: found.value.local[0].models[0] ?? '' };
 });
 
+async function loadUsage() { usage.value = await api<{ fraction: number | null }>('/studio-ai/usage').catch(() => null); }
+/** Sign in: the browser opens on the account page; this screen waits and connects by itself. */
+async function studioSignIn() {
+  clearTimeout(pollTimer); state.value = ''; message.value = '';
+  try {
+    const r = await api<{ code: string; verifyUrl: string; interval: number }>('/studio-ai/start', 'POST');
+    link.value = { code: r.code, verifyUrl: r.verifyUrl };
+    window.open(r.verifyUrl, '_blank', 'noopener');
+    const tick = async () => {
+      const p = await api<{ status: string; ai?: Ai; aiOn?: boolean }>('/studio-ai/poll', 'POST').catch(() => ({ status: 'pending' } as { status: string; ai?: Ai; aiOn?: boolean }));
+      if (p.status === 'ok' && p.ai) {
+        link.value = null; if (s.value) s.value = { ...s.value, ai: p.ai, aiOn: !!p.aiOn };
+        studio.value = await api<NonNullable<typeof studio.value>>('/studio-ai').catch(() => studio.value);
+        state.value = 'ok'; message.value = 'Connected. AI is on.'; emit('saved', !!p.aiOn); void loadUsage(); return;
+      }
+      if (['expired', 'consumed', 'unknown'].includes(p.status)) { link.value = null; state.value = 'failed'; message.value = 'The sign-in code expired. Press Sign in again.'; return; }
+      message.value = p.status === 'needs_plan' ? 'Signed in. Waiting for you to subscribe in the browser…' : 'Waiting for you to sign in in the browser…';
+      pollTimer = setTimeout(tick, (r.interval || 3) * 1000);
+    };
+    state.value = 'checking'; message.value = 'Waiting for you to sign in in the browser…';
+    pollTimer = setTimeout(tick, (r.interval || 3) * 1000);
+  } catch (e) { state.value = 'failed'; message.value = (e as Error).message; }
+}
+async function studioSignOut() {
+  const r = await api<{ ai: Ai; aiOn: boolean }>('/studio-ai/signout', 'POST');
+  if (s.value) s.value = { ...s.value, ai: r.ai, aiOn: r.aiOn };
+  studio.value = studio.value ? { ...studio.value, connected: false, email: '' } : null; usage.value = null;
+  state.value = 'ok'; message.value = 'Signed out of Author Studio AI on this computer.'; emit('saved', r.aiOn);
+}
+onBeforeUnmount(() => clearTimeout(pollTimer));
 function pickChoice(c: Choice) { choice.value = c; key.value = ''; state.value = ''; message.value = ''; models.value = []; }
 
 /** Send a choice to be tested; it is kept only if the test passes. */
@@ -98,7 +137,7 @@ async function saveModels() {
   await connect({ ...a, model: adv.value.model, cheapModel: adv.value.cheapModel }, 'Checking the models…');
 }
 const pickedLocal = computed(() => found.value?.local.find((l) => l.url === local.value.url));
-const chosenLabel = computed(() => (choice.value?.kind === 'claude-code' ? 'Claude subscription' : choice.value?.kind === 'local' ? 'This computer' : current.value?.known ?? ''));
+const chosenLabel = computed(() => (choice.value?.kind === 'studio' ? 'Author Studio AI' : choice.value?.kind === 'claude-code' ? 'Claude subscription' : choice.value?.kind === 'local' ? 'This computer' : current.value?.known ?? ''));
 </script>
 
 <template>
@@ -106,10 +145,17 @@ const chosenLabel = computed(() => (choice.value?.kind === 'claude-code' ? 'Clau
     <Panel :span="8" eyebrow="AI helper" :title="s?.aiOn ? 'AI is on' : 'Add an AI helper'">
       <template v-if="s?.aiOn" #actions><button class="pill" @click="turnOff">Turn off</button></template>
       <p v-if="s?.aiOn" class="using"><span class="dot" />Using {{ nowUsing }}</p>
+      <div v-if="s?.ai.mode === 'studio' && usage?.fraction != null" class="meter" :title="`${Math.round(usage.fraction * 100)}% of this month's AI allowance used`">
+        <div class="bar"><div class="fill" :style="{ transform: `scaleX(${usage.fraction})` }" /></div>
+        <span class="muted small">{{ Math.round(usage.fraction * 100) }}% of this month's AI used</span>
+      </div>
       <p class="intro">An AI can draft scenes for you to rewrite, suggest ideas when you are stuck, and answer as your characters. It is optional: everything else works without it.</p>
 
       <h3 class="step-h">{{ s?.aiOn ? 'Switch to a different AI' : 'Which AI would you like to use?' }}</h3>
       <div class="choices" role="radiogroup" aria-label="AI service">
+        <button v-if="studio?.available" type="button" role="radio" :aria-checked="is({ kind: 'studio' })" class="choice wide" :class="{ on: is({ kind: 'studio' }) }" @click="pickChoice({ kind: 'studio' })">
+          <span class="badge found">{{ studio.connected ? 'Connected' : 'Easiest' }}</span><b>Author Studio AI</b><span class="muted">Included with a subscription. No keys and no AI accounts: sign in once and it just works.</span>
+        </button>
         <button v-if="found?.claudeCode.installed" type="button" role="radio" :aria-checked="is({ kind: 'claude-code' })" class="choice" :class="{ on: is({ kind: 'claude-code' }) }" @click="pickChoice({ kind: 'claude-code' })">
           <span class="badge found">Found on this computer</span><b>Your Claude subscription</b><span class="muted">Claude Code is installed here. Uses your Claude plan: no key, nothing extra to pay.</span>
         </button>
@@ -138,7 +184,26 @@ const chosenLabel = computed(() => (choice.value?.kind === 'claude-code' ? 'Clau
       <!-- the steps for the chosen AI -->
       <div v-if="choice && choice.kind !== 'none'" v-reveal class="setup" aria-live="polite">
         <span class="micro">Set up {{ chosenLabel }}</span>
-        <template v-if="current">
+        <template v-if="choice.kind === 'studio'">
+          <template v-if="studio?.connected">
+            <p>Signed in as <b>{{ studio.email }}</b>.</p>
+            <div class="row"><a v-if="studio.portalUrl" class="pill solid" :href="studio.portalUrl" target="_blank" rel="noopener">Manage subscription ↗</a><button class="pill" @click="studioSignOut">Sign out on this computer</button></div>
+          </template>
+          <template v-else-if="link">
+            <p>Your browser opened. Check it shows this code:</p>
+            <div class="bigcode">{{ link.code }}</div>
+            <p class="muted small">Browser didn't open? <a :href="link.verifyUrl" target="_blank" rel="noopener">Open the page</a></p>
+          </template>
+          <template v-else>
+            <ol class="steps">
+              <li><span>Press Sign in. Your browser opens.</span></li>
+              <li><span>Sign in with your email and choose the plan.</span></li>
+              <li><span>Come back here. It connects by itself.</span></li>
+            </ol>
+            <div class="row"><Cta :disabled="state === 'checking'" @click="studioSignIn">Sign in</Cta></div>
+          </template>
+        </template>
+        <template v-else-if="current">
           <ol class="steps">
             <li v-for="(t, i) in current.steps" :key="i"><span>{{ t }}</span><a v-if="i === 0" class="pill" :href="current.keyUrl" target="_blank" rel="noopener">Open {{ current.keyUrl.replace(/^https:\/\//, '').split('/')[0] }} ↗</a></li>
           </ol>
@@ -210,6 +275,11 @@ const chosenLabel = computed(() => (choice.value?.kind === 'claude-code' ? 'Clau
 .choice:hover { transform: translateY(-1px); }
 .choice b { font: 560 15px/1.2 var(--ui); }
 .choice b .muted { font-weight: 400; }
+.choice.wide { grid-column: 1 / -1; }
+.bigcode { display: inline-block; font: 600 26px/1 var(--mono); letter-spacing: 0.14em; padding: 14px 18px; border-radius: 14px; background: var(--paper-2); box-shadow: inset 0 0 0 1px var(--hair-2); margin: 4px 0 12px; }
+.meter { display: grid; gap: 6px; margin: -4px 0 14px; max-width: 360px; }
+.meter .bar { height: 4px; border-radius: 4px; background: var(--hair-2); overflow: hidden; }
+.meter .fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transform-origin: left; transition: transform 600ms var(--spring); }
 .choice.on { background: var(--violet-wash); box-shadow: inset 0 0 0 1px var(--accent); }
 .badge { justify-self: start; font: 500 10px/1 var(--ui); letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 8px; border-radius: 99px; background: var(--violet-wash); color: var(--accent); }
 .badge.found, .badge.free { background: color-mix(in srgb, var(--ok, #3ecf8e) 16%, transparent); color: var(--ok, #3ecf8e); }

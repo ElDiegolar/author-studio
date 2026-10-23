@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page } from '@playwright/test';
 
-export interface Run { tmp: string; project: string; writerHome: string; live: boolean; fakeUrl: string | null; base: string; ids: { mara: string; jonah: string } }
+export interface Run { tmp: string; project: string; writerHome: string; live: boolean; fakeUrl: string | null; cloudUrl: string | null; base: string; ids: { mara: string; jonah: string } }
 export const run = (): Run => JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.run.json'), 'utf8')) as Run;
 
 export async function api<T = any>(p: string, method = 'GET', body?: unknown): Promise<T> {

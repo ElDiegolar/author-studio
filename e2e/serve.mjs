@@ -9,7 +9,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startFakeModel } from './fake-model.mjs';
+import { startFakeCloud, startFakeModel } from './fake-model.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const live = process.env.E2E_LIVE === '1';
@@ -41,9 +41,11 @@ if (!live) {
   fake = await startFakeModel();
   Object.assign(env, { AUTHOR_PROVIDER: 'local', AUTHOR_LOCAL_URL: fake.url, AUTHOR_LOCAL_MODEL: 'fake', AUTHOR_LOCAL_THINKING: '0' });
 }
-await fs.writeFile(path.join(root, 'e2e', '.run.json'), JSON.stringify({ tmp, project, writerHome, settings, live, fakeUrl: fake?.url ?? null, base: `http://127.0.0.1:${port}`, ids: { mara: mara.id, jonah: jonah.id } }, null, 2));
+const cloud = fake ? await startFakeCloud(fake.url) : null;
+if (cloud) env.AUTHOR_CLOUD_URL = cloud.url;
+await fs.writeFile(path.join(root, 'e2e', '.run.json'), JSON.stringify({ tmp, project, writerHome, settings, live, fakeUrl: fake?.url ?? null, cloudUrl: cloud?.url ?? null, base: `http://127.0.0.1:${port}`, ids: { mara: mara.id, jonah: jonah.id } }, null, 2));
 
 const server = spawn(process.execPath, [path.join(root, 'packages/server/dist/main.js')], { env, stdio: 'inherit' });
-const stop = async () => { server.kill(); fake?.server.close(); await fs.rm(tmp, { recursive: true, force: true }); process.exit(0); };
+const stop = async () => { server.kill(); fake?.server.close(); cloud?.server.close(); await fs.rm(tmp, { recursive: true, force: true }); process.exit(0); };
 process.on('SIGTERM', stop); process.on('SIGINT', stop);
 server.on('exit', (code) => { fake?.server.close(); process.exit(code ?? 0); });

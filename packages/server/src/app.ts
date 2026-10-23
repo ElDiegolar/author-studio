@@ -5,6 +5,7 @@
 import { Hono, type Context } from 'hono';
 import { diffWords } from 'diff';
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { reveal, within } from './reveal.js';
 import {
@@ -26,6 +27,8 @@ export interface AppOptions {
   onOpen?: (title: string, dir: string) => void;
   /** Show a path in the file manager; the desktop app passes the native one. */
   reveal?: (p: string) => Promise<void>;
+  /** Author Studio AI (the subscription service); default AUTHOR_CLOUD_URL. Without it the choice is hidden. */
+  cloudUrl?: string;
 }
 
 class NoProject extends Error { constructor() { super('No novel is open. Open or create one from the library.'); } }
@@ -98,7 +101,10 @@ export async function createApp(opts: AppOptions): Promise<Hono> {
     if (ai.mode === 'cloud' && ai.service) { if (clearKey) delete keys[ai.service]; else if (k) keys[ai.service] = k; }
     if (ai.mode === 'anthropic') { if (clearKey) apiKey = undefined; else if (k) apiKey = k; }
     const same = prev && prev.mode === ai.mode && prev.service === ai.service;
-    const next: Settings = { ai: { ...(same ? { model: prev.model, cheapModel: prev.cheapModel } : {}), ...ai, ...(apiKey ? { apiKey } : {}), ...(Object.keys(keys).length ? { keys } : {}) } };
+    // The subscription's key only ever arrives by device sign-in; the page never sends it back.
+    const { studio: _fromPage, ...asked } = ai as Settings['ai'];
+    const next: Settings = { ai: { ...(same ? { model: prev.model, cheapModel: prev.cheapModel } : {}), ...asked, ...(apiKey ? { apiKey } : {}), ...(Object.keys(keys).length ? { keys } : {}), ...(prev?.studio ? { studio: prev.studio } : {}) } };
+    if (next.ai.mode === 'studio' && !next.ai.studio) next.ai.mode = 'none';
     for (const f of ['model', 'cheapModel', 'localUrl', 'localModel'] as const) if (!next.ai[f]) delete next.ai[f];
     return next;
   };
@@ -119,6 +125,57 @@ export async function createApp(opts: AppOptions): Promise<Hono> {
     if (!t.ok) return c.json({ ok: false, reason: t.reason, models: ready.models });
     return c.json({ ok: true, ms: t.ms, models: ready.models, ...(await adopt(ready.settings)) });
   });
+  // ---- Author Studio AI: device sign-in to the subscription ----
+  const cloud = (opts.cloudUrl ?? process.env.AUTHOR_CLOUD_URL ?? '').replace(/\/+$/, '');
+  let pendingLink: { code: string; pollSecret: string } | null = null;
+  const cloudCall = async (route: string, body?: unknown) => {
+    const r = await fetch(`${cloud}/${route}`, body === undefined ? { signal: AbortSignal.timeout(15_000) } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
+    return { status: r.status, body: await r.json().catch(() => ({})) as Record<string, any> };
+  };
+  app.get('/api/studio-ai', async (c) => {
+    const st = settings?.ai.studio;
+    // Models are chosen on the service side; pick up a change without an app update.
+    if (cloud && st && settings?.ai.mode === 'studio') {
+      try { const { body: cfg } = await cloudCall('config'); if (cfg.model && (cfg.model !== st.model || cfg.cheapModel !== st.cheapModel || cfg.portalUrl !== st.portalUrl)) await adopt({ ai: { ...settings.ai, studio: { ...st, model: cfg.model, cheapModel: cfg.cheapModel ?? cfg.model, baseUrl: cfg.baseUrl ?? st.baseUrl, ...(cfg.portalUrl ? { portalUrl: cfg.portalUrl } : {}) } } }); } catch { /* offline: keep what we have */ }
+    }
+    return c.json({ available: Boolean(cloud), connected: Boolean(st), email: st?.email ?? '', plan: st?.plan ?? '', portalUrl: settings?.ai.studio?.portalUrl ?? '' });
+  });
+  app.post('/api/studio-ai/start', async (c) => {
+    if (!cloud) return c.json({ error: 'Author Studio AI is not available in this version.' }, 404);
+    try {
+      const { status, body } = await cloudCall('start', { deviceName: os.hostname() });
+      if (status !== 200) return c.json({ error: body.error ?? 'Could not start sign-in. Try again.' }, 502);
+      pendingLink = { code: body.code, pollSecret: body.pollSecret };
+      return c.json({ code: body.code, verifyUrl: body.verifyUrl, interval: body.interval ?? 3, expiresIn: body.expiresIn ?? 600 });
+    } catch { return c.json({ error: 'Could not reach Author Studio AI. Check your internet connection.' }, 502); }
+  });
+  app.post('/api/studio-ai/poll', async (c) => {
+    if (!cloud || !pendingLink) return c.json({ status: 'expired' });
+    try {
+      const { body } = await cloudCall('poll', pendingLink);
+      if (body.status !== 'ok') { if (['expired', 'consumed', 'unknown'].includes(body.status)) pendingLink = null; return c.json({ status: body.status ?? 'pending', email: body.email ?? '' }); }
+      pendingLink = null;
+      const out = await adopt({ ai: { mode: 'studio', ...(settings?.ai.apiKey ? { apiKey: settings.ai.apiKey } : {}), ...(settings?.ai.keys ? { keys: settings.ai.keys } : {}),
+        studio: { key: body.key, email: body.email ?? '', plan: body.plan ?? '', baseUrl: body.baseUrl, model: body.model, cheapModel: body.cheapModel ?? body.model, ...(body.portalUrl ? { portalUrl: body.portalUrl } : {}) } } });
+      return c.json({ status: 'ok', ...out });
+    } catch { return c.json({ status: 'pending' }); }
+  });
+  /** This month's use, straight from the key's own counters (no account call needed). */
+  app.get('/api/studio-ai/usage', async (c) => {
+    const st = settings?.ai.studio; if (!st) return c.json({ usage: null, limit: null });
+    try {
+      const r = await fetch(`${st.baseUrl}/key`, { headers: { authorization: `Bearer ${st.key}` }, signal: AbortSignal.timeout(10_000) });
+      const j = (await r.json()) as { data?: { usage?: number; limit?: number | null; limit_remaining?: number | null; usage_monthly?: number } };
+      const used = j.data?.usage_monthly ?? j.data?.usage ?? null; const limit = j.data?.limit ?? null;
+      return c.json({ usage: used, limit, fraction: used !== null && limit ? Math.min(1, used / limit) : null });
+    } catch { return c.json({ usage: null, limit: null }); }
+  });
+  app.post('/api/studio-ai/signout', async (c) => {
+    if (!settings) return c.json({ ok: true });
+    const { studio: _gone, ...ai } = settings.ai;
+    return c.json(await adopt({ ai: { ...ai, mode: ai.mode === 'studio' ? 'none' : ai.mode } }));
+  });
+
   /** The hosted services, for the setup screen (no keys in here). */
   app.get('/api/ai/services', (c) => c.json(SERVICES.map(({ prefer, cheap, fallback, baseUrl, tokenParam, thinkingRoom, ...pub }) => pub)));
   /** Models the saved key can use on the chosen service, for the advanced picker. */

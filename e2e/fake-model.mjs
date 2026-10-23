@@ -92,6 +92,8 @@ export function startFakeModel(port = Number(process.env.FAKE_MODEL_PORT ?? 8799
     req.on('end', () => {
       res.setHeader('content-type', 'application/json');
       if (req.url === '/calls') { res.end(JSON.stringify(calls)); return; }
+      // An Author Studio AI key asking for its own usage (OpenRouter's GET /key).
+      if (req.url === '/v1/key') { res.end(JSON.stringify({ data: { usage: 1, limit: 4, auth: req.headers.authorization ?? '' } })); return; }
       const j = body ? JSON.parse(body) : { messages: [] };
       const system = j.messages.find((m) => m.role === 'system')?.content ?? '';
       const rest = j.messages.filter((m) => m.role !== 'system');
@@ -101,4 +103,35 @@ export function startFakeModel(port = Number(process.env.FAKE_MODEL_PORT ?? 8799
     });
   });
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve({ server, calls, url: `http://127.0.0.1:${port}/v1` })));
+}
+
+/**
+ * A stand-in for the Author Studio AI service (the Supabase function): device codes, a test hook that
+ * plays the writer approving and paying in the browser, then a key pointed at the fake model.
+ */
+export function startFakeCloud(modelUrl, port = Number(process.env.FAKE_CLOUD_PORT ?? 8797)) {
+  const links = new Map();
+  const send = (res, status, body) => { res.statusCode = status; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(body)); };
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      const j = body ? JSON.parse(body) : {};
+      const route = req.url.split('/').pop();
+      if (route === 'config') return send(res, 200, { baseUrl: modelUrl, model: 'fake', cheapModel: 'fake', portalUrl: 'https://billing.example/portal' });
+      if (route === 'start') { const code = `TEST-${String(links.size + 1).padStart(4, '0')}`; links.set(code, { secret: `s-${code}`, state: 'pending' }); return send(res, 200, { code, pollSecret: `s-${code}`, verifyUrl: `http://127.0.0.1:${port}/link.html?code=${code}`, interval: 1, expiresIn: 600 }); }
+      if (route === 'approve-and-pay') { for (const l of links.values()) if (l.state === 'pending') l.state = 'paid'; return send(res, 200, { ok: true }); }
+      if (route === 'poll') {
+        const l = links.get(j.code);
+        if (!l || l.secret !== j.pollSecret) return send(res, 404, { status: 'unknown' });
+        if (l.state === 'consumed') return send(res, 410, { status: 'consumed' });
+        if (l.state !== 'paid') return send(res, 200, { status: 'pending' });
+        l.state = 'consumed';
+        return send(res, 200, { status: 'ok', key: 'sk-or-test-key', email: 'ana@example.com', plan: 'writer', baseUrl: modelUrl, model: 'fake', cheapModel: 'fake', portalUrl: 'https://billing.example/portal' });
+      }
+      if (req.url.startsWith('/link.html')) { res.setHeader('content-type', 'text/html'); return res.end('<p>account page</p>'); }
+      send(res, 404, { error: 'not found' });
+    });
+  });
+  return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${port}` })));
 }

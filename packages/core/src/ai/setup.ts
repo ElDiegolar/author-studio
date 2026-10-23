@@ -66,6 +66,11 @@ export type AiTest = { ok: true; ms: number } | { ok: false; reason: string };
 export function explainAiError(mode: Settings['ai']['mode'], e: unknown, service?: string): string {
   const m = String((e as Error)?.message ?? e);
   if (/timed? ?out|aborted/i.test(m)) return 'It took too long to answer. Try again; if it keeps happening, check your internet connection.';
+  if (mode === 'studio') {
+    if (/limit|402|credit|insufficient|quota/i.test(m)) return 'You have used this month\'s AI allowance. It refills at the start of next month; your writing is unaffected.';
+    if (/401|403|disabled|unauthori/i.test(m)) return 'Your Author Studio AI subscription is not active. Check it in your account, or sign in again in Settings.';
+    if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|fetch failed|network/i.test(m)) return 'Could not reach the AI. Check your internet connection.';
+  }
   if (mode === 'anthropic' || mode === 'cloud') {
     const who = mode === 'anthropic' ? 'Anthropic' : serviceById(service)?.name ?? 'the service';
     if (/401|authenticat|invalid.*key|api.?key.*(invalid|not valid)|incorrect api key|x-api-key|API_KEY_INVALID/i.test(m)) return `That key was not accepted. Check you copied all of it${mode === 'anthropic' ? ', starting with sk-ant-' : ''}.`;
@@ -92,6 +97,7 @@ export async function testAi(settings: Settings): Promise<AiTest> {
   if (mode === 'none') return { ok: true, ms: 0 };
   if (mode === 'anthropic' && !settings.ai.apiKey) return { ok: false, reason: 'Paste your key first.' };
   if (mode === 'cloud' && !(settings.ai.service && settings.ai.keys?.[settings.ai.service])) return { ok: false, reason: 'Paste your key first.' };
+  if (mode === 'studio' && !settings.ai.studio) return { ok: false, reason: 'Sign in to Author Studio AI first.' };
   const started = Date.now();
   try {
     const p = providerFor('extractor', aiConfigFrom(settings));
